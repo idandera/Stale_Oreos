@@ -1,0 +1,216 @@
+{
+    "Total_Members": 21,
+    "Team_Objects": [
+        {
+            "id": "t001",
+            "name": "Steaksauce",
+            "color": "AA0000"
+        },
+        {
+            "id": "t002",
+            "name": "Lapis Lords",
+            "color": "0000AA"
+        },
+        {
+            "id": "t003",
+            "name": "Tea Party",
+            "color": "AA00AA"
+        },
+        {
+            "id": "t004",
+            "name": "BadLands",
+            "color": "FFFF55"
+        }
+    ],
+    "Member_Objects": [
+        {
+            "id": "u001",
+            "discord": "252099253940387851",
+            "name": "Alex",
+            "alias": "dAndErA",
+            "pronouns": "m",
+            "team": "t002",
+            "img": "https://i.imgur.com/JJLdkon.png"
+        },
+        {
+            "id": "u002",
+            "discord": "268152589437108224",
+            "name": "Owen",
+            "alias": "Nender_Blale",
+            "pronouns": "n",
+            "team": "t002",
+            "img": "https://i.imgur.com/Ng9bS9v.png"
+        },
+        {
+            "id": "u003",
+            "discord": "159366543493300233",
+            "name": "Ben",
+            "alias": "Ben7432",
+            "pronouns": "m",
+            "team": "t002",
+            "img": "https://i.imgur.com/e6UothP.png"
+        },
+        {
+            "id": "u004",
+            "discord": "268214197714812929",
+            "name": "Andrew",
+            "alias": "Drewza",
+            "pronouns": "m",
+            "team": "t001",
+            "img": "https://i.imgur.com/xi5FYlR.png"
+        },
+        {
+            "id": "u005",
+            "discord": "271011654081314818",
+            "name": "Gabie",
+            "alias": "timetwiste",
+            "pronouns": "f",
+            "team": "t002",
+            "img": "https://i.imgur.com/ERwgLgB.png"
+        },
+        {
+            "id": "u006",
+            "discord": "300110620622323714",
+            "name": "Mel",
+            "alias": "mel0ntea",
+            "pronouns": "f",
+            "team": "t003",
+            "img": "https://i.imgur.com/B3aF71R.png"
+        },
+        {
+            "id": "u007",
+            "discord": "268562702539030528",
+            "name": "Matt",
+            "alias": "Mattamx",
+            "pronouns": "m",
+            "team": "t001",
+            "img": "https://i.imgur.com/IZHsKiX.png"
+        },
+        {
+            "id": "u008",
+            "discord": "287665828965515265",
+            "name": "Jason",
+            "alias": "papi_juul",
+            "pronouns": "m",
+            "team": "t001",
+            "img": "https://i.imgur.com/BUMZ2gO.png"
+        },
+        {
+            "id": "u009",
+            "discord": "261932331718148096",
+            "name": "Camden",
+            "alias": "_CaptainObvious",
+            "pronouns": "m",
+            "team": "t002",
+            "img": "https://i.imgur.com/x7i8FUC.png"
+        },
+        {
+            "id": "u010",
+            "discord": "244030671964602378",
+            "name": "Nini",
+            "alias": "Platygoose",
+            "pronouns": "f",
+            "team": "t003",
+            "img": "https://i.imgur.com/pWKcfIm.png"
+        },
+        {
+            "id": "u011",
+            "discord": "452584862562648064",
+            "name": "Josh",
+            "alias": "JewFade",
+            "pronouns": "m",
+            "team": "t004",
+            "img": "https://i.imgur.com/inzgp1P.png"
+        },
+        {
+            "id": "u012",
+            "discord": "300436494101774336",
+            "name": "Dove",
+            "alias": "dovenoire",
+            "pronouns": "f",
+            "team": "t003",
+            "img": "https://i.imgur.com/GIdm8FF.png"
+        },
+        {
+            "id": "u013",
+            "discord": "355795384901173249",
+            "name": "Pau",
+            "alias": "PlNYA",
+            "pronouns": "f",
+            "team": "t004",
+            "img": "https://i.imgur.com/JXArap4.png"
+        },
+        {
+            "id": "u014",
+            "discord": "246301259395629058",
+            "name": "Pockeii",
+            "alias": "Pockeii",
+            "pronouns": "f",
+            "team": "t003",
+            "img": "https://i.imgur.com/2nGkmCC.png"
+        },
+        {
+            "id": "u015",
+            "discord": "394335166035656704",
+            "name": "Mike",
+            "alias": "Bulbasax",
+            "pronouns": "m",
+            "team": "t004",
+            "img": "https://i.imgur.com/bhdfRN3.png"
+        },
+        {
+            "id": "u016",
+            "discord": "268558036329693186",
+            "name": "Marissa",
+            "alias": "Sayr",
+            "pronouns": "f",
+            "team": null,
+            "img": "https://i.imgur.com/857yijB.png"
+        },
+        {
+            "id": "u017",
+            "discord": "319557559692427284",
+            "name": "Rachel",
+            "alias": "Rawwwrchel22",
+            "pronouns": "f",
+            "team": "t003",
+            "img": "https://i.imgur.com/857yijB.png"
+        },
+        {
+            "id": "u018",
+            "discord": "322403072766771200",
+            "name": "Christine",
+            "alias": "xDarkHikarix",
+            "pronouns": "f",
+            "team": "t003",
+            "img": "https://i.imgur.com/857yijB.png"
+        },
+        {
+            "id": "u019",
+            "discord": "492791547507507210",
+            "name": "Becki",
+            "alias": "Beckiis",
+            "pronouns": "f",
+            "team": "t004",
+            "img": "https://i.imgur.com/857yijB.png"
+        },
+        {
+            "id": "u020",
+            "discord": "227252430293827594",
+            "name": "Cammy",
+            "alias": "Nightmeri",
+            "pronouns": "f",
+            "team": "t004",
+            "img": "https://i.imgur.com/857yijB.png"
+        },
+        {
+            "id": "u021",
+            "discord": "181537377032863744",
+            "name": "Jack",
+            "alias": "HollowVessel",
+            "pronouns": "m",
+            "team": "t002",
+            "img": "https://i.imgur.com/Juyb5MZ.png"
+        }
+    ]
+}
