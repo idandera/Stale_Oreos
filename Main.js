@@ -27,7 +27,7 @@ var fs = require("fs");
 
 client.on('ready', () => {
     console.log('Connected as ' + client.user.tag);
-    client.user.setActivity('Arguing with json files');
+    client.user.setActivity('Soft is Better');
 })
 
 client.on('message', message => {//if event message is triggered
@@ -894,7 +894,9 @@ function History(message){
 function Leaderboard_Det(message){
     //leaderboard function will receive a message and create a embed of the current uhc rankings
     //leaderboard will have some data maniluplation. Filtering for team/solo games and filtering for minecraft versions
-    
+    //only filtering the game array will be done in this function
+    //building the leaderboard embed will be done in the next function: Print_Leaderboard
+
     //the command array
     const cmd_Arr = message.content.toString().toLowerCase().split(' ').slice(2);
     //load data from disk
@@ -1072,7 +1074,7 @@ function Leaderboard_Det(message){
             loop++;
         }
         g_Arr = [];
-        Filtered_Arr.forEach(Element => {
+        Game_Main.Game_History.forEach(Element => {
             g_date = [];
             g_date = Element.date.split(' ')[0].split('-');
             loop = 0;
@@ -1080,7 +1082,6 @@ function Leaderboard_Det(message){
                 g_date[loop] = parseInt(g_date[loop], 10);
                 loop++;
             }
-            console.log(g_date)
             //determine if the date is after or on the start date
             if(g_date == low_date || g_date[0] == low_date[0] && g_date[1] == low_date[1] && g_date[2] > low_date[2] || g_date[0] == low_date[0] && g_date[1] > low_date[1] || g_date[0] > low_date[0]){
                 //the game date is after or on the start date
@@ -1089,7 +1090,6 @@ function Leaderboard_Det(message){
                     g_Arr[g_Arr.length] = Element;
                 }
             }
-            
         })
         Print_Leaderboard(message, g_Arr, 'UHC Leaderboard (MC Version ' + version + ')')
     }
@@ -1191,12 +1191,12 @@ function Print_Leaderboard(message, g_Arr, title){
         message.channel.send(Err_lb);
         return;
     }
-
+    
     //create attendance top 5
     let attendance_board = [];
     loop = 1;
     attendance_board[0] = '1. ' + member_arr[0].alias
-    while(loop < 5 && loop < member_arr.length){
+    while(loop < 5 && loop < member_arr.length && member_arr[loop].attendance > 0){
         if(member_arr[loop].attendance == member_arr[loop - 1].attendance){
             attendance_board[attendance_board.length] = attendance_board[attendance_board.length - 1].split(' ')[0] + ' ' + member_arr[loop].alias;
         }else{
@@ -1223,8 +1223,9 @@ function Print_Leaderboard(message, g_Arr, title){
     }
     win_board[0] = '1. ' + member_arr[0].alias
     var thumbnail = member_arr[0].img
+    var color = Member_Main.Team_Objects[parseInt(member_arr[0].team.slice(1), 10) - 1].color
     loop = 1;
-    while(loop < 5 && loop < member_arr.length){
+    while(loop < 5 && loop < member_arr.length && member_arr[loop].wins > 0){
         if(member_arr[loop].wins == member_arr[loop - 1].wins){
             win_board[win_board.length] = win_board[win_board.length - 1].split(' ')[0] + ' ' + member_arr[loop].alias;
         }else{
@@ -1239,7 +1240,7 @@ function Print_Leaderboard(message, g_Arr, title){
     while(loop < member_arr.length){
         inloop = 0;
         while(inloop < member_arr.length - 1){
-            if(member_arr[inloop].runner_ups < member_arr[inloop + 1].wins){
+            if(member_arr[inloop].runner_ups < member_arr[inloop + 1].runner_ups){
                 swap = null;
                 swap = member_arr[inloop];
                 member_arr[inloop] = member_arr[inloop + 1];
@@ -1251,7 +1252,7 @@ function Print_Leaderboard(message, g_Arr, title){
     }
     runnerup_board[0] = '1. ' + member_arr[0].alias
     loop = 1;
-    while(loop < 5 && loop < member_arr.length){
+    while(loop < 5 && loop < member_arr.length && member_arr[loop].runner_ups > 0){
         if(member_arr[loop].wins == member_arr[loop - 1].wins){
             runnerup_board[runnerup_board.length] = runnerup_board[runnerup_board.length - 1].split(' ')[0] + ' ' + member_arr[loop].alias;
         }else{
@@ -1266,7 +1267,7 @@ function Print_Leaderboard(message, g_Arr, title){
     while(loop < member_arr.length){
         inloop = 0;
         while(inloop < member_arr.length - 1){
-            if(member_arr[inloop].runner_ups < member_arr[inloop + 1].first_bloods){
+            if(member_arr[inloop].first_bloods < member_arr[inloop + 1].first_bloods){
                 swap = null;
                 swap = member_arr[inloop];
                 member_arr[inloop] = member_arr[inloop + 1];
@@ -1278,7 +1279,7 @@ function Print_Leaderboard(message, g_Arr, title){
     }
     firstblood_board[0] = '1. ' + member_arr[0].alias
     loop = 1;
-    while(loop < 5 && loop < member_arr.length){
+    while(loop < 5 && loop < member_arr.length && member_arr[loop].first_bloods > 0){
         if(member_arr[loop].wins == member_arr[loop - 1].wins){
             firstblood_board[firstblood_board.length] = firstblood_board[firstblood_board.length - 1].split(' ')[0] + ' ' + member_arr[loop].alias;
         }else{
@@ -1293,7 +1294,7 @@ function Print_Leaderboard(message, g_Arr, title){
     while(loop < member_arr.length){
         inloop = 0;
         while(inloop < member_arr.length - 1){
-            if(member_arr[inloop].runner_ups < member_arr[inloop + 1].first_deaths){
+            if(member_arr[inloop].first_deaths < member_arr[inloop + 1].first_deaths){
                 swap = null;
                 swap = member_arr[inloop];
                 member_arr[inloop] = member_arr[inloop + 1];
@@ -1305,7 +1306,7 @@ function Print_Leaderboard(message, g_Arr, title){
     }
     firstdeath_board[0] = '1. ' + member_arr[0].alias
     loop = 1;
-    while(loop < 5 && loop < member_arr.length){
+    while(loop < 5 && loop < member_arr.length && member_arr[loop].first_deaths > 0){
         if(member_arr[loop].wins == member_arr[loop - 1].wins){
             firstdeath_board[firstdeath_board.length] = firstdeath_board[firstdeath_board.length - 1].split(' ')[0] + ' ' + member_arr[loop].alias;
         }else{
@@ -1319,21 +1320,21 @@ function Print_Leaderboard(message, g_Arr, title){
         if(Element.deaths == 0 && Element.kills == 0){
             Element.kdr = 0;
         }else if(Element.deaths == 0){
-            Element.kdr = 500;
+            Element.kdr = 5000;//to avoid a NaN value, set the kdr as an integer that is way higher than any possible kdr so they will be #1 with their perfect kdr
         }else{
             Element.kdr = (Element.kills / Element.deaths);
         }
         Element.avg_kills = (Element.kills / Element.attendance);
-        Element.win_rate = (Element.wins / g_Arr.length);
+        Element.win_rate = (Element.wins / Element.attendance);
     })
-
+    
     //create top 5 for kill/death ratio
     let kdr_board = [];
     loop = 0;
     while(loop < member_arr.length){
         inloop = 0;
         while(inloop < member_arr.length - 1){
-            if(member_arr[inloop].runner_ups < member_arr[inloop + 1].kdr){
+            if(member_arr[inloop].kdr < member_arr[inloop + 1].kdr){
                 swap = null;
                 swap = member_arr[inloop];
                 member_arr[inloop] = member_arr[inloop + 1];
@@ -1345,7 +1346,7 @@ function Print_Leaderboard(message, g_Arr, title){
     }
     kdr_board[0] = '1. ' + member_arr[0].alias
     loop = 1;
-    while(loop < 5 && loop < member_arr.length){
+    while(loop < 5 && loop < member_arr.length && member_arr[loop].kdr > 0){
         if(member_arr[loop].wins == member_arr[loop - 1].wins){
             kdr_board[kdr_board.length] = kdr_board[kdr_board.length - 1].split(' ')[0] + ' ' + member_arr[loop].alias;
         }else{
@@ -1360,7 +1361,7 @@ function Print_Leaderboard(message, g_Arr, title){
     while(loop < member_arr.length){
         inloop = 0;
         while(inloop < member_arr.length - 1){
-            if(member_arr[inloop].avg_kills < member_arr[inloop + 1].kdr){
+            if(member_arr[inloop].avg_kills < member_arr[inloop + 1].avg_kills){
                 swap = null;
                 swap = member_arr[inloop];
                 member_arr[inloop] = member_arr[inloop + 1];
@@ -1372,7 +1373,7 @@ function Print_Leaderboard(message, g_Arr, title){
     }
     avg_kills_board[0] = '1. ' + member_arr[0].alias
     loop = 1;
-    while(loop < 5 && loop < member_arr.length){
+    while(loop < 5 && loop < member_arr.length && member_arr[loop].avg_kills > 0){
         if(member_arr[loop].wins == member_arr[loop - 1].wins){
             avg_kills_board[avg_kills_board.length] = avg_kills_board[avg_kills_board.length - 1].split(' ')[0] + ' ' + member_arr[loop].alias;
         }else{
@@ -1387,7 +1388,7 @@ function Print_Leaderboard(message, g_Arr, title){
     while(loop < member_arr.length){
         inloop = 0;
         while(inloop < member_arr.length - 1){
-            if(member_arr[inloop].win_rate < member_arr[inloop + 1].kdr){
+            if(member_arr[inloop].win_rate < member_arr[inloop + 1].win_rate){
                 swap = null;
                 swap = member_arr[inloop];
                 member_arr[inloop] = member_arr[inloop + 1];
@@ -1399,7 +1400,7 @@ function Print_Leaderboard(message, g_Arr, title){
     }
     win_rate_board[0] = '1. ' + member_arr[0].alias
     loop = 1;
-    while(loop < 5 && loop < member_arr.length){
+    while(loop < 5 && loop < member_arr.length && member_arr[loop].win_rate > 0){
         if(member_arr[loop].wins == member_arr[loop - 1].wins){
             win_rate_board[win_rate_board.length] = win_rate_board[win_rate_board.length - 1].split(' ')[0] + ' ' + member_arr[loop].alias;
         }else{
@@ -1408,10 +1409,11 @@ function Print_Leaderboard(message, g_Arr, title){
         loop++;
     }
 
-    console.log(member_arr)
+    //console.log(member_arr)
     const Leaderboard_Embed = new Discord.MessageEmbed()
         .setTitle(title)
         .setThumbnail(thumbnail)
+        .setColor(color)
         .addFields(
             { name: '**Most Wins**', value: win_board.join('\n'), inline: true },
             { name: '**Most Runnerups**', value: runnerup_board.join('\n'), inline: true }
@@ -1431,8 +1433,8 @@ function Print_Leaderboard(message, g_Arr, title){
             { name: '**Best Win Rate**', value: win_rate_board.join('\n'), inline: true },
             { name: '**Best Attendance**', value: attendance_board.join('\n'), inline: true }
         )
-        .setFooter('Sample Size: ' + g_Arr.length)
-    message.channel.send(Leaderboard_Embed)
+        .setFooter('Sample Size: ' + g_Arr.length, 'https://i.imgur.com/857yijB.png');
+    message.channel.send(Leaderboard_Embed);
 }
 
 async function Game_Menu_init(message, g_Arr, filters){
@@ -1676,7 +1678,9 @@ function Help(message){//the help function. For when you just don't know what th
     }else if(cmd_Arr[0] == 'leaderboard' || cmd_Arr[0] == 'lb' || cmd_Arr[0] == 'leader'){
         Help_Embed
             .setTitle('Leaderboard Command')
-            .addField('null', 'This function has to be rewritten')
+            .setDescription('Display a embed with the top 5 ranking players in 8 categories.')
+            .addField('format', 's!o leaderboard - show leaderboard data from all games\ns!o leaderboard solo - show leaderboard data from only solo games\ns!o leaderboard team - show leaderboard data from only team games\ns!o solo [version] - show data from only solo games in a certain version of Minecraft\ns!o teams [version] - show data from only teams games in a certain version of Minecraft\ns!o [version] - show all data from games played in a certain version of Minecraft')
+            .addField('Examples', 's!o leaderboard solo 1.15\ns!o leaderboard 1.16\ns!o leaderboard teams')
     }else if(cmd_Arr[0] == 'enter'){
         Help_Embed
             .setTitle('Enter Data Function')
