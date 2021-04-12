@@ -1,7 +1,7 @@
 //author: dandera
 //purpose: custom discord bot for Stale Oreos Server. Manage and Archive data from Stale Oreo UHC matches
 //created: 2021-03-15
-//last edited: 2021-04-06
+//last edited: 2021-04-11
 
 /*
 ----------------------FINISHED-----------------------------------------------------------------------
@@ -10,12 +10,12 @@
     UHC Player cards [excluding filters] are done
     UHC Game cards are done
     new JSON file structure for member and game data is done
+    new system for organizing people to join UHC
+    new system for entering game data into the archive
+    new system for editing profile data for every user
+    new system for editing select game data (title and video)
 -----------------------------------------------------------------------------------------------------
 ----------------------TO DO--------------------------------------------------------------------------
-    Write new data entry code. Old code is unable to read or write to new json file structure
-    Implement a new way to edit the JSON files without using file exchange on filezilla
-        Allow members to edit their own member file through commands in discord
-        Allow select members to edit game data through commands in discord
     Create a plan for how to implement future data objects from minecraft plugin
 -----------------------------------------------------------------------------------------------------
 */
@@ -31,7 +31,7 @@ client.on('ready', () => {
 })
 
 client.on('message', message => {//if event message is triggered
-    if(message.content.toString().toLowerCase().split(' ')[0] == 's!t'){//if first element in message content is the call for bot response
+    if(message.content.toString().toLowerCase().split(' ')[0] == 's!o'){//if first element in message content is the call for bot response
         ProcessCommand(message);//forward message to process
     }
 })
@@ -55,11 +55,31 @@ function ProcessCommand(message){
     }else if(cmd == 'help'){
         Help(message)
     }else if(cmd == 'enter'){
-        
-    }else if (cmd == 'history'){
+        Enter_game(message);
+    }else if(cmd == 'history'){
         History(message);
     }else if(cmd == 'spreadsheet' || cmd == 'sheet' || cmd == 'excel' || cmd == 'google'){
         message.channel.send('https://docs.google.com/spreadsheets/d/1EfzHNmcwAIgFR-lyNLQv_yc6-o2yJ3qfBZ-WtrhtjwA/edit?usp=sharing');
+    }else if(cmd == 'notify'){
+        Notify_Det(message);
+    }else if(cmd == 'reply'){
+        Notify_Reply(message);
+    }else if(cmd == 'notifs' || cmd == 'notifications'){
+        Notifications(message)
+    }else if(cmd == 'join'){
+        Join(message);
+    }else if(cmd == 'profile'){
+        Profile(message);
+    }else if(cmd == 'edit' && cmd_arr.length > 2){
+        if(cmd_arr[2] == 'profile'){
+            Edit_profile_data(message);
+        }else if(cmd_arr[2] == 'game'){
+            Edit_game_data(message);
+        }else{
+            message.channel.send('Improper input. Try `s!o help edit`');
+        }
+    }else{
+        message.channel.send('I did not understand the command `' + cmd + '`. Try `s!o help`')
     }
 }
 
@@ -85,12 +105,46 @@ function UHC_Stat(message, path){
     let err_Arr = [];
     var user_in = [];
     var filter = [];
+    if(temp_Arr[0].startsWith('v(')){
+        temp_Arr[0] = temp_Arr[0].slice(2, -1);
+    }else if(temp_Arr[0].startsWith('version(')){
+        temp_Arr[0] = temp_Arr[0].slice(8, -1);
+    }
+    const mc_versions = fs.readFileSync('./mc_versions.txt').toString().split('\n');
+    loop = 0;
+    var version = null;
+    var low_date = [];
+    var high_date = [];
+    while(loop < mc_versions.length){
+        if(temp_Arr[0] == mc_versions[loop].split('|')[0]){
+            version = temp_Arr[0];
+            low_date = mc_versions[loop].split('|')[1].split('-');
+            if((loop + 1) == mc_versions.length){
+                high_date = [10000,12,31];
+            }else{
+                high_date = mc_versions[loop + 1].split('|')[1].split('-');
+            }
+            temp_Arr = temp_Arr.slice(1);
+            loop = mc_versions.length;
+        }
+        loop++;
+    }
+    if(version != null){
+        loop = 0;
+        while(loop < 3){
+            low_date[loop] = parseInt(low_date[loop], 10);
+            high_date[loop] = parseInt(high_date[loop], 10);
+            loop++;
+        }
+    }
     temp_Arr.forEach(Element => {//seperate filter inputs from user inputs
+        /*
         if(Element.startsWith('f+') || Element.startsWith('f-')){//if input begins with f+ or f- it is a filter input ---- this implementation may change later
             filter[filter.length] = Element;
         }else{
             user_in[user_in.length] = Element;
-        }
+        }*/
+        user_in[user_in.length] = Element;
     })
     if(user_in.length == 0){//check to make sure there is at least one user input
         message.channel.send('You must include a name in your command. Try `s!o help uhc`');
@@ -138,23 +192,41 @@ function UHC_Stat(message, path){
     //uID_Arr has been finalized, continue on to data collection
     const Game_Dat_Main = JSON.parse(fs.readFileSync('./Game_Data_Main.json', 'utf8'));
     let g_Arr = [];
+    var g_Date = [];
     loop = 0;
-    while(loop < uID_Arr.length){//preform this task for each identified user
-        g_Arr = [];//clear g_Arr from the previous loop
-        Game_Dat_Main.Game_History.forEach(Element => {//for each of the games in the main directory
-            if(path == 'all' || path == 'solo' && Element.isSolo == true || path == 'team' && Element.isSolo == false){//check to make sure the path (solo game / team game / combined) matches the request
-                if(Element.participants.includes(uID_Arr[loop])){//if the user is in the participants list for this game
-                    g_Arr[g_Arr.length] = Element.id;//add this game ID to the array of games for this user
-                    //NOTE: This is a dumb implementation but it works so fuck it
+    console.log(uID_Arr, low_date, high_date)
+    g_Arr = [];//clear g_Arr from the previous loop
+    Game_Dat_Main.Game_History.forEach(Element => {//for each of the games in the main directory
+       if(path == 'all' || path == 'solo' && Element.isSolo == true || path == 'team' && Element.isSolo == false){//check to make sure the path (solo game / team game / combined) matches the request
+            if(version != null){
+                g_Date = Element.date.split(' ')[0].split('-');
+                while(loop < 3){
+                    g_Date[loop] = parseInt(g_Date[loop], 10);
+                    loop++;
                 }
+                if(g_Date == low_date || g_Date[0] == low_date[0] && g_Date[1] == low_date[1] && g_Date[2] > low_date[2] || g_Date[0] == low_date[0] && g_Date[1] > low_date[1] || g_Date[0] > low_date[0]){
+                    //the game date is after or on the start date
+                    if(g_Date == high_date || g_Date[0] == high_date[0] && g_Date[1] == high_date[1] && g_Date[2] < high_date[2] || g_Date[0] == high_date[0] && g_Date[1] < high_date[1] || g_Date[0] < high_date[0]){
+                        //the game date is before or on the end date
+                        g_Arr[g_Arr.length] = Element.id;
+                    }
+                }
+            }else{
+                g_Arr[g_Arr.length] = Element.id;//add this game ID to the array of games for this user
+                //NOTE: This is a dumb implementation but it works so fuck it
             }
-        })
-        Print_User_Card(message, uID_Arr[loop], g_Arr, path, filter);//pass completed list of relevant games onto function print_user_card
-        loop++;
-    }
+            /*if(Element.participants.includes(uID_Arr[loop])){//if the user is in the participants list for this game
+                
+            }*/
+        }
+    })
+    uID_Arr.forEach(Element => {//pass completed list of relevant games onto function print_user_card
+        Print_User_Card(message, Element, g_Arr, path, version);
+    })
 }
 
 function Print_User_Card(message, uID, g_Arr, path, filter){
+    console.log('print_user_card', uID)
     //this function was called from function UHC_Stat
     //this function uses input uID (user ID) and g_Arr (array of game IDs) to calculate statics for the identified user
     //the output of this function is a message embed containing all calculated stats to the channel the command originated
@@ -166,6 +238,7 @@ function Print_User_Card(message, uID, g_Arr, path, filter){
     */
     //declare all variables relevant to output
     console.log(g_Arr)
+    var loop = 0;
     var games_won = 0;
     var runner_ups = 0;
     var first_bloods = 0;
@@ -177,7 +250,7 @@ function Print_User_Card(message, uID, g_Arr, path, filter){
 
     //helping variables to find calculate the above
     var games_played = 0;
-    var total_games = 0;
+    var total_games = g_Arr.length;
     var kills = 0;
     var deaths = 0;
 
@@ -187,15 +260,18 @@ function Print_User_Card(message, uID, g_Arr, path, filter){
     const Team_Data = Member_Data.Team_Objects[parseInt(User_Data.team.slice(1), 10) - 1];
     //load game directory from disc
     const Game_Data = JSON.parse(fs.readFileSync('./Game_Data_Main.json', 'utf8'));
-    if(path == 'all'){//if the path is all games, call the total games count from the game data json file
-        total_games = Game_Data.Total_Games;
-    }else{
-        Game_Data.Game_History.forEach(Element => {
-            if(path == 'team' && Element.isSolo == false || path == 'solo' && Element.isSolo == true){//go through the directory and determine how many games of either team or solo were played
-                total_games++;
+    var Filter_Arr = [];
+    Game_Data.Game_History.forEach(Element => {
+        loop = 0;
+        while(loop < g_Arr.length){
+            if(Element.id == g_Arr[loop] && Element.participants.includes(uID)){
+                Filter_Arr[Filter_Arr.length] = g_Arr[loop];
             }
-        })
-    }
+            loop++;
+        }
+    })
+    g_Arr = [];
+    g_Arr = Filter_Arr;
     games_played = g_Arr.length;
     var game_file = null;
     g_Arr.forEach(Element => {//for each game_ID in the array from g_Arr input
@@ -259,6 +335,9 @@ function Print_User_Card(message, uID, g_Arr, path, filter){
     }else{
         title = 'Err: path not found';
     }
+    if(filter != null){
+        title = title + ' (MC Version ' + filter + ')';
+    }
     //catch bad numbers
     if(games_played == 0){
         kdr = 0;
@@ -268,19 +347,23 @@ function Print_User_Card(message, uID, g_Arr, path, filter){
     }
     const Player_Card = new Discord.MessageEmbed()
         .setTitle(title)
+        .setDescription(games_played + ' games played')
         .setThumbnail(User_Data.img)
         .setColor(Team_Data.color)
-        .addField('**Games Won**', games_won)
-        .addField('**Runner-ups**', runner_ups)
-        .addField('**First Bloods**', first_bloods)
-        .addField('**First Deaths**', first_deaths)
-        .addField('**K/D ratio**', kdr)
-        .addField('**Average Kills per Game**', avg_kills)
-        .addField('**Win Rate**', win_rate)
-        .addField('**Game Attendance**', attendance);
-    if(filter != null){
-        Player_Card.setFooter(filter);
-    }
+        .addFields(
+            {name: '**Games Won**', value: games_won, inline: true},
+            {name: '**Runner-ups**', value: runner_ups, inline: true},
+            {name: '\u200B', value: '\u200B'},
+            {name: '**First Bloods**', value: first_bloods, inline: true},
+            {name: '**First Deaths**', value: first_deaths, inline: true},
+            {name: '\u200B', value: '\u200B'},
+            {name: '**K/D Ratio**', value: kdr, inline: true},
+            {name: '**Average Kills per Game**', value: avg_kills, inline: true},
+            {name: '\u200B', value: '\u200B'},
+            {name: '**Win Rate**', value: win_rate, inline: true},
+            {name: '**Game Attendance**', value: attendance, inline: true}
+        )
+        .setFooter('Sample Size: ' + total_games, 'https://i.imgur.com/857yijB.png');
     console.log(Player_Card);
     message.channel.send(Player_Card);
 }
@@ -332,7 +415,7 @@ function Print_Game_Card(message, gID){
             case 'Red':
                 color = 'FF5555';
                 break;
-            case 'Gold':
+            case 'Orange':
                 color = 'FFAA00';
                 break;
             case 'Yellow':
@@ -359,7 +442,7 @@ function Print_Game_Card(message, gID){
             case 'Magenta':
                 color = 'FF55FF';
                 break;
-            case 'Dark Purple':
+            case 'Purple':
                 color = 'AA00AA';
                 break;
             case 'White':
@@ -435,13 +518,20 @@ function Print_Game_Card(message, gID){
     const Game_Card = new Discord.MessageEmbed()
         .setTitle('**' + game_file.title + '**')
         .setDescription(game_file.date)//set the description (appears in small font below the title) as the game date
-        .addField('**Winner**', winner)
         .setColor(color)
-        .addField('**Runner-up**', runner_up);
-    if(first_blood != null){//if first blood is not empty, include it as a field
+        .addFields(
+            { name: '**Winner**', value: winner, inline: true},
+            { name: '**Runner-up**', value: runner_up, inline: true}
+        );
+    if(first_blood != null && first_death != null){
+        Game_Card.addFields(
+            { name: '\u200B', value: '\u200B'},
+            { name: '**First Blood**', value: first_blood, inline: true},
+            { name: '**First Death**', value: first_death, inline: true}
+        )
+    }else if(first_blood != null){
         Game_Card.addField('**First Blood**', first_blood);
-    }
-    if(first_death != null){//if first death is not empty, include it as a field
+    }else if(first_death != null){
         Game_Card.addField('**First Death**', first_death);
     }
     if(thumb != null){//if there is a thumbnail, include it
@@ -458,7 +548,6 @@ function Print_Game_Card(message, gID){
     }
     Game_Card.setFooter('internal game ID: ' + gID, 'https://i.imgur.com/857yijB.png')
     console.log(Game_Card);
-    fs.writeFileSync('./test_embed.json', JSON.stringify(Game_Card));
     message.channel.send(Game_Card);//send the game card to the channel
 }
 
@@ -1649,13 +1738,2216 @@ async function Game_Menu_Update(message, g_Arr, filters, menu, page, pages){
     })
 }
 
+function Notifications(message){
+    //someone wants to update their notifications setting
+    const Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+    var in_Arr = message.content.toString().toLowerCase().split(' ').slice(2);
+    if(in_Arr.length == 0){
+        message.channel.send('Error. Try `s!o help notifs`');
+        return;
+    }
+    var notifs = null;
+    if(in_Arr[0] == 'on'){
+        notifs = true;
+    }else if(in_Arr[0] == 'off'){
+        notifs = false;
+    }else{
+        message.channel.send('Unable to determine input `' + in_Arr[0] + '`. Try `s!o help notifs`');
+        return;
+    }
+    var check = false;
+    Member_Data.Member_Objects.forEach(Element => {
+        if(Element.discord == message.author.id){
+            check = true;
+            Element.notif = notifs;
+            console.log(Element);
+        }
+    })
+    if(check == true){
+        fs.writeFileSync('./Member_Data_Main.json', JSON.stringify(Member_Data, null, 4), 'utf8');
+        message.react('✅');
+    }else{
+        message.channel.send('Unable to find user `' + message.author.username + '` on file. Try `s!o join`');
+    }
+}
+
+async function Notify_Det(message){
+    //A UHC is being planned, send a notification to all the members who want UHC notifications
+    //this is the first function in a multi function process, the next function is notif_send and the final is notif_reply
+    if(message.author.id != '252099253940387851' && message.author.id != '742510148647387256' && message.author.id != '268214197714812929' && message.author.id != '268152589437108224'){
+        message.channel.send('You are not authorized to use this command.');
+        return;
+    }
+    const in_Arr = message.content.toString().toLowerCase().split(' ').slice(2);
+    if(in_Arr.length == 0){
+        message.channel.send('Improper format. Try `s!o help notify`');
+        return;
+    }
+    //There will be a few different pieces of info needed from the person setting up the match
+    //When will the match be
+    //Will it be solo or teams
+    //Any additional comments {make a comments field optional}
+
+    //declare variables used in this function
+    var match_time = [];
+    var comments = null;
+
+    var loop = 0;
+
+    match_time = in_Arr[0].split(':');
+    loop = 0
+    while(loop < 2){//turn the input string into an array of integers
+        match_time[loop] = parseInt(match_time[loop], 10);
+        loop++;
+    }
+
+    //the format should be hours:minutes
+    if(isNaN(match_time[0]) || match_time[0] < 0 || match_time[0] > 23 || isNaN(match_time[1]) || match_time[1] < 0 || match_time[1] > 59){
+        message.channel.send('Improper time format: `' + match_time.join(':') + '`. Try `s!o help notify`');
+        return;
+    }
+    //the time has been set
+    
+    if(in_Arr.length > 1){//If the author included game comments, include them as a string. Include any capitalizations they had
+        comments = message.content.toString().split(' ').slice(3).join(' ');
+    }
+    
+    //all inputs have been logged. Move on to next step of notifying members of the upcoming game
+    const Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json'), 'utf8');
+    //create a string for displaying match time (make it so that even if minutes is single digit, the string still shows two minute digits)
+    var match_time_display = match_time[0].toString() + ':';
+    if(match_time[1] < 10){
+        match_time_display = match_time_display + '0' + match_time[1].toString();
+    }else{
+        match_time_display = match_time_display + match_time[1].toString();
+    }
+    var set_JSON = '{ "time": "' + match_time_display + '",\n"Active": "true",\n"Home_msg": "null",\n"Home_channel": "null",\n"Home_guild": "null",\n"Coming": [ ],\n"Not_Coming": [ ],\n"Maybe": [ ]}';
+    var notif_JSON = JSON.parse(set_JSON)
+    const Double_Check_Embed = new Discord.MessageEmbed()
+        .setTitle('Are you sure?')
+        .addField('Game start time', match_time_display)
+        .setColor('15ccc7');
+    if(comments != null){
+        Double_Check_Embed.addField('Note', comments);
+    }
+    var invited_members = 0;
+    Member_Data.Member_Objects.forEach(Element => {
+        if(Element.notif == true){
+            invited_members++;
+        }
+    })
+    const confirm = await message.channel.send(Double_Check_Embed);
+    const filter = m => m.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 15000 }, );
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            confirm.delete();
+            return;
+        }
+        var rep_string = collected.first().content.toString().toLowerCase();
+        if(rep_string == 'y' || rep_string == 'yes'){
+            //proceed with function
+            message.channel.send('Invitations sent to ' + invited_members + ' members ✅');
+            Notif_Send(message, notif_JSON, comments);
+            confirm.delete();
+        }else{
+            message.channel.send('Function Canceled');
+            confirm.delete();
+        }
+
+    })
+}
+
+async function Notify_Reply(message){
+    //a user has sent a command saying they want to change their status in the coming UHC
+    
+    //load relevant data
+    const match_JSON = JSON.parse(fs.readFileSync('./Planned_Game.json', 'utf8'));
+    if(match_JSON.Active.toString() == "false"){//check to make sure there is a game coming up
+        message.channel.send('Error. No scheduled game found on file.');
+        return;
+    }
+    const Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+    var path = null;
+    var in_Arr = message.content.toString().toLowerCase().split(' ').slice(2);
+    if(in_Arr.length == 0){
+        message.channel.send('Error. improper format. Try `s!o help reply`');
+        return;
+    }
+    if(in_Arr[0] == 'coming' || in_Arr[0] == 'can'){
+        path = 'y'
+    }else if(in_Arr[0] == 'cant' || in_Arr[0] == "can't" || in_Arr[0] == 'not'){
+        path = 'n'
+    }else if(in_Arr[0] == 'maybe'){
+        path = 'm'
+    }else{
+        message.channel.send('Unable to determine input: `' + in_Arr[0] + '`. Try `s!o help reply`');
+        return;
+    }
+    const guild = client.guilds.cache.get(match_JSON.Home_guild);
+    const channel = guild.channels.cache.get(match_JSON.Home_channel);
+    const Home_msg = await channel.messages.fetch(match_JSON.Home_msg);
+    var check = false;
+    Member_Data.Member_Objects.forEach(Element => {
+        if(Element.discord == message.author.id){
+            Notify_Handle_Reply(Home_msg, Element, path);
+            check = true;
+        }
+    })
+    if(check == false){
+        message.channel.send('Error. Unable to find user `' + message.author.username + '` in data files. Try `s!o join`');
+    }
+}
+
+async function Notif_Send(message, match_JSON, comments){
+    //a UHC has been set, send invitations to all members who are signed up for notifications
+    
+    //read member data from disc
+    
+    const Member_Main = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+    const Home_Embed = new Discord.MessageEmbed()
+        .setColor('15ccc7')  
+        .setTitle('Waiting for Replies...')
+        .setDescription(match_JSON.time + ' UTC');
+    //send an embed to the channel that will be actively updated showing who is coming/might come and can't come
+    const Home_msg = await message.channel.send(Home_Embed);
+    match_JSON.Home_msg = Home_msg.id
+    match_JSON.Home_guild = message.guild.id
+    match_JSON.Home_channel = Home_msg.channel.id
+    //start by writing the game data to disc
+    fs.writeFileSync('./Planned_Game.json', JSON.stringify(match_JSON, null, 4), 'utf8');
+    //determine how much time is left until the game starts
+    var start_time = [];
+    var delay = 0;
+    //send invitations to members
+    const date = new Date();
+    start_time[0] = parseInt(match_JSON.time.split(':')[0], 10);
+    start_time[1] = parseInt(match_JSON.time.split(':')[1], 10);
+    console.log(start_time)
+    var time = [0,0,0]
+    time[0] = parseInt(date.getHours(), 10);
+    time[1] = parseInt(date.getMinutes(), 10);
+    time[2] = parseInt(date.getSeconds(), 10);
+    console.log(time);
+    if(start_time[0] > time[0]){
+        delay = (start_time[0] - time[0]) * 3600000;
+        delay = delay + (start_time[1] - time[1]) * 60000;
+        delay = delay + parseInt(time[2] / 1000);
+    }else if(start_time[0] < time[0]){
+        delay = (start_time[0] - 1) * 3600000;
+        delay = delay + ((start_time[1]) * 60000);
+        delay = delay + ((24 - time[0]) * 3600000);
+        delay = delay + ((60 - time[1]) * 60000);
+        delay = delay + (time[2] * 1000);
+    }else{
+        delay = (start_time[1] - time[1]) * 60000;
+        delay = delay + (time[2] * 1000) - 59000;
+    }
+    Member_Main.Member_Objects.forEach(Element => {
+        if(Element.notif == true){//make sure that this user has notifs on
+            console.log(Element)
+            Notif_Reply(message, Home_msg, match_JSON, Element, comments, delay);
+        }
+    })
+    
+    //send an invitation to each member who has notifications turned on. Set up a collector for them to reply
+    Update_Game_Clock(Home_msg, true);//start the process of updating the live countdown clock
+}
+
+async function Notif_Reply(message, Home_msg, match_JSON, member_obj, comments, delay){
+    //this function will be called once for each member who has signed up for UHC notifications
+    //
+    
+    //build an embed to send to this user
+    const DM_Embed = new Discord.MessageEmbed()
+        .setTitle('UHC Invitation')
+        .setColor('15ccc7')
+        .setDescription('Hello ' + member_obj.name + ',\nYou have been invited to a UHC Game');
+    if(comments != null){
+        DM_Embed.setFooter(comments);
+    }
+    //check what timezone this user is in and adjust the game time display to show it in their timezone
+    var time_disp = match_JSON.time.split(':');
+    if(member_obj.timezone != 0){
+        time_disp[0] = parseInt(time_disp[0], 10) + parseInt(member_obj.timezone, 10);
+        if(time_disp[0] < 0){
+            time_disp[0] = time_disp[0] + 24;
+        }else if(time_disp[0] > 23){
+            time_disp[0] = time_disp[0] - 24;
+        }
+        if(time_disp[0] > 13){
+            time_disp[0] = time_disp[0] - 12;
+            DM_Embed.addField('Planned Time', time_disp.join(':') + ' PM\n(' + match_JSON.time + ' UTC)');
+        }else if(time_disp[0] == 0){
+            time_disp[0] = 12;
+            DM_Embed.addField('Planned Time', time_disp.join(':') + ' AM\n(' + match_JSON.time + ' UTC)');
+        }else if(time_disp[0] == 12){
+            DM_Embed.addField('Planned Time', time_disp.join(':') + ' PM\n(' + match_JSON.time + ' UTC)');
+        }else{
+            DM_Embed.addField('Planned Time', time_disp.join(':') + ' AM\n(' + match_JSON.time + ' UTC)');
+        }
+        
+    }else{
+        DM_Embed.addField('Planned Time', match_JSON.time);
+    }
+    DM_Embed.addField('React to reply...', "✅ - I'm coming!\n❌ - I can't come\n🤔 - I may be able to come.");
+    //console.log(member_obj)
+    console.log('fetching... ' + member_obj.discord);
+    const user = client.users.cache.get(member_obj.discord);
+    const invitation = await user.send(DM_Embed);
+    const emojis = ['✅', '❌', '🤔'];
+    var loop = 0;
+    while(loop < 3){
+        invitation.react(emojis[loop]);
+        loop++;
+    }
+    const filter = (reaction, user) => {
+        return ['✅', '❌', '🤔'];
+    }
+    const selection = await invitation.awaitReactions(filter, {max: 1, time: delay})
+        .then(collected => {
+            if(collected.size == 0){
+                user.send("Invitation expired.\nIf you are still coming, please let us know in " + message.channel.name);
+                return;
+            }
+            const reaction = collected.first();
+            const reply_Embed = new Discord.MessageEmbed();
+            if(reaction.emoji.name == '✅'){
+                Notify_Handle_Reply(Home_msg, member_obj, 'y');
+                reply_Embed
+                    .setDescription('Thanks for responding ✅\nYou will receive a reminder when the game is about to start.')
+                    .setFooter('To change your response DM me one of the following.\ns!o reply coming\ns!o reply cant\ns!o reply maybe')
+                    .setColor('15ccc7');
+                user.send(reply_Embed);
+                //they have chosen to come!
+            }else if(reaction.emoji.name == '❌'){
+                //they can't come :(
+                Notify_Handle_Reply(Home_msg, member_obj, 'n');
+                reply_Embed
+                    .setDescription('Thanks for responding ❌')
+                    .setFooter('To change your response DM me one of the following.\ns!o reply coming\ns!o reply cant\ns!o reply maybe')
+                    .setColor('15ccc7');
+                user.send(reply_Embed);
+            }else if(reaction.emoji.name == '🤔'){
+                //they aren't sure
+                Notify_Handle_Reply(Home_msg, member_obj, 'm');
+                reply_Embed
+                    .setDescription('Thanks for responding 🤔\nYou will receive a reminder when the game is about to start.')
+                    .setFooter('To change your response DM me one of the following.\ns!o reply coming\ns!o reply cant\ns!o reply maybe')
+                    .setColor('15ccc7');
+                user.send(reply_Embed);
+            }
+            invitation.delete();
+        })
+}
+
+function Update_Game_Clock(Home_msg, isFirst){
+    //an update is required on Home_msg
+    //declare variables
+    var start_time = [];
+    var delay = 0;
+    const match_JSON = JSON.parse(fs.readFileSync('./Planned_Game.json', 'utf8'));
+    //determine how much time is left until the game starts
+    const date = new Date();
+    start_time[0] = parseInt(match_JSON.time.split(':')[0], 10);
+    start_time[1] = parseInt(match_JSON.time.split(':')[1], 10);
+    console.log(start_time)
+    var time = [0,0,0]
+    time[0] = parseInt(date.getHours(), 10);
+    time[1] = parseInt(date.getMinutes(), 10);
+    time[2] = parseInt(date.getSeconds(), 10);
+    console.log(time);
+    if(start_time[0] > time[0]){
+        delay = (start_time[0] - time[0]) * 3600000;
+        delay = delay + (start_time[1] - time[1]) * 60000;
+        delay = delay + parseInt(time[2] / 1000);
+    }else if(start_time[0] < time[0]){
+        delay = (start_time[0] - 1) * 3600000;
+        delay = delay + ((start_time[1]) * 60000);
+        delay = delay + ((24 - time[0]) * 3600000);
+        delay = delay + ((60 - time[1]) * 60000);
+        delay = delay + (time[2] * 1000);
+    }else{
+        delay = (start_time[1] - time[1]) * 60000;
+        delay = delay + (time[2] * 1000) - 59000;
+    }
+    console.log('delay: ' + delay);
+    var setDelay = 0;
+    if(isFirst == true){
+        setDelay = time[2] * 1000;
+        setDelay = setDelay - 900;
+    }else{
+        setDelay = 60000;
+    }
+    if(delay > -300000){
+        Update_Home_Embed(Home_msg, delay);
+        setTimeout(function(){
+            Update_Game_Clock(Home_msg, false);
+        }, setDelay)
+    }else{
+        match_JSON.Active = 'false';
+        fs.writeFileSync('./Planned_Game.json', JSON.stringify(match_JSON, null, 4), 'utf8');
+    }
+    if(isFirst == true && delay > 1900000){//is the first time this function is being called for this UHC
+        //set timeouts for reminders
+        setTimeout(function(){
+            Notify_Warning(Home_msg, true);
+        }, (delay - 1800000))
+    }
+    if(isFirst == true && delay > 60000){
+        setTimeout(function(){
+            Notify_Warning(Home_msg, false);
+        }, delay)
+    }
+}
+
+function Notify_Warning(message, isFirst){
+    const match_JSON = JSON.parse(fs.readFileSync('./Planned_Game.json', 'utf8'));
+    const Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+    if(match_JSON.Coming.length != 0){
+        match_JSON.Coming.forEach(Element => {
+            Warning(Member_Data.Member_Objects[parseInt(Element.slice(1), 10) - 1], isFirst);
+        })
+    }
+    if(match_JSON.Maybe.length != 0 && isFirst == true){
+        match_JSON.Maybe.forEach(Element => {
+            console.log(Element)
+            console.log(parseInt(Element.slice(1), 10))
+            Maybe_Followup(message, Member_Data.Member_Objects[parseInt(Element.slice(1), 10) - 1]);
+        })
+    }
+    if(isFirst == true){
+        message.channel.send('The UHC game is starting in 30 minutes!')
+    }else{
+        message.channel.send('The UHC game is starting!')
+    }
+    
+}
+
+function Warning(member_obj, isFirst){
+    console.log('fetching... ' + member_obj.name)
+    const user = client.users.cache.get(member_obj.discord);
+    if(isFirst == true){
+        user.send('The UHC game is starting in 30 minutes!')
+    }else{
+        user.send('The UHC game is starting!')
+    }
+    
+}
+
+async function Maybe_Followup(Home_msg, member_obj){
+    //this user previous replied with "maybe"
+    //when this function is called, there is one hour until the game starts
+    //send a follow up message asking if they will be able to come or not
+
+    
+    const Maybe_Embed = new Discord.MessageEmbed()
+        .setTitle('UHC Invitation Follow-up')
+        .setDescription('Hello ' + member_obj.name + ',\nThere is 30 minutes left until the UHC round is scheduled to begin. Will you be able to join?')
+        .addField('React to reply...', "✅ - I'm coming!\n❌ - I can't come")
+        .setDescription('This menu will remain active until the game begins')
+        .setColor('15ccc7');
+    //the rest of this is the same as in Notif_Reply() except the maybe option is removed
+    console.log('fetching... ' + member_obj.discord);
+    const user = client.users.cache.get(member_obj.discord);
+    const invitation = await user.send(Maybe_Embed);
+    const emojis = ['✅', '❌'];
+    var loop = 0;
+    while(loop < 2){
+        invitation.react(emojis[loop]);
+        loop++;
+    }
+    const filter = (reaction, user) => {
+        return ['✅', '❌'];
+    }
+    const selection = await invitation.awaitReactions(filter, {max: 1, time: 1800000})
+        .then(collected => {
+            const reply_Embed = new Discord.MessageEmbed();
+            if(collected.size == 0){
+                user.send("Invitation expired.\nIf you are still coming, please let us know in " + message.channel.name);
+                return;
+            }
+            const reaction = collected.first();
+            if(reaction.emoji.name == '✅'){
+                Notify_Handle_Reply(Home_msg, member_obj, 'y');
+                reply_Embed
+                    .setDescription('Thanks for responding ✅\nYou will receive a reminder when the game is about to start.')
+                    .setFooter('To change your response DM me one of the following.\ns!o reply coming\ns!o reply cant\ns!o reply maybe')
+                    .setColor('15ccc7');
+                user.send(reply_Embed);
+                //they have chosen to come!
+            }else if(reaction.emoji.name == '❌'){
+                //they can't come :(
+                Notify_Handle_Reply(Home_msg, member_obj, 'n');
+                reply_Embed
+                    .setDescription('Thanks for responding ❌')
+                    .setFooter('To change your response DM me one of the following.\ns!o reply coming\ns!o reply cant\ns!o reply maybe')
+                    .setColor('15ccc7');
+                user.send(reply_Embed);
+            }else{
+                user.send('invalid selection.\nIf you are still coming, please let us know in ' + message.channel.name);
+                return;
+            }
+            invitation.delete();
+        })
+}
+
+function Notify_Handle_Reply(Home_msg, member_obj, reply){
+    //a user has replied to the invitation message
+    console.log('notify handle reply: ' + member_obj.alias)
+    const match_JSON = JSON.parse(fs.readFileSync('./Planned_Game.json', 'utf8'));
+    if(reply == 'y'){
+        Home_msg.channel.send('**' + member_obj.alias + '** is coming!');
+    }else if(reply == 'n'){
+        Home_msg.channel.send('**' + member_obj.alias + "** can't come 😭");
+    }else if(reply == 'm'){
+        if(member_obj.pronouns == 'm'){
+            Home_msg.channel.send('**' + member_obj.alias + "** isn't sure if he can come.");
+        }else if(member_obj.pronouns == 'f'){
+            Home_msg.channel.send('**' + member_obj.alias + "** isn't sure if she can come.");
+        }else if(member_obj.pronouns == 'n'){
+            Home_msg.channel.send('**' + member_obj.alias + "** isn't sure if they can come.");
+        }
+    }
+    var filtered = [];
+    if(match_JSON.Not_Coming.includes(member_obj.id)){
+        filtered = [];
+        match_JSON.Not_Coming.forEach(Element => {//filter out this user from the not coming list
+            if(Element != member_obj.id){
+                filtered[filtered].length = Element
+            }
+        })
+        match_JSON.Not_Coming = [];
+        match_JSON.Not_Coming = filtered;
+    }
+    if(match_JSON.Maybe.includes(member_obj.id)){
+        filtered = [];
+        match_JSON.Maybe.forEach(Element => {//filter out this user from the not coming list
+            if(Element != member_obj.id){
+                filtered[filtered].length = Element
+            }
+        })
+        match_JSON.Maybe = [];
+        match_JSON.Maybe = filtered;
+    }
+    if(match_JSON.Coming.includes(member_obj.id)){
+        filtered = [];
+        match_JSON.Coming.forEach(Element => {//filter out this user from the not coming list
+            if(Element != member_obj.id){
+                filtered[filtered].length = Element
+            }
+        })
+        match_JSON.Coming = [];
+        match_JSON.Coming = filtered;
+    }
+    if(reply == 'y'){
+        match_JSON.Coming[match_JSON.Coming.length] = member_obj.id;
+    }
+    if(reply == 'n'){
+        match_JSON.Not_Coming[match_JSON.Not_Coming.length] = member_obj.id;
+    }
+    if(reply == 'm'){
+        match_JSON.Maybe[match_JSON.Maybe.length] = member_obj.id;
+    }
+    console.log(match_JSON)
+    fs.writeFileSync('./Planned_Game.json', JSON.stringify(match_JSON, null, 4), 'utf8');//write into the game file that this user is not coming
+}
+
+function Update_Home_Embed(Home_msg, delay){
+    //an update is required on Home_msg due to someone replying to the invitation
+    //load relevant data
+    const match_JSON = JSON.parse(fs.readFileSync('./Planned_Game.json', 'utf8'));
+    const Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+    //declare variables
+    var coming = [];
+    var not_coming = [];
+    var maybe = [];
+    //create arrays of aliases of all the players coming, not coming, and maybes
+    match_JSON.Coming.forEach(Element => {
+        coming[coming.length] = Member_Data.Member_Objects[parseInt(Element.slice(1), 10) - 1].alias;
+    })
+    match_JSON.Not_Coming.forEach(Element => {
+        not_coming[not_coming.length] = Member_Data.Member_Objects[parseInt(Element.slice(1), 10) - 1].alias;
+    })
+    match_JSON.Maybe.forEach(Element => {
+        maybe[maybe.length] = Member_Data.Member_Objects[parseInt(Element.slice(1), 10) - 1].alias;
+    })
+    if(coming.length == 0){
+        coming[0] = 'empty';
+    }
+    if(not_coming.length == 0){
+        not_coming[0] = 'empty';
+    }
+    if(maybe.length == 0){
+        maybe[0] = 'empty';
+    }
+    
+    var delay_ms = 0;
+    var time_left = [0, 0, 0];
+    delay_ms = delay;
+    while(delay_ms > 3599999){
+        time_left[0]++;
+        delay_ms = delay_ms - 3600000;
+    }
+    while(delay_ms > 59999){
+        time_left[1]++;
+        delay_ms = delay_ms - 60000;
+    }
+    if(delay_ms > 0){
+        time_left[2] = parseInt(delay_ms/1000, 10);
+    }
+    if(time_left[1] < 10){
+        time_left[1] = '0' + time_left[1].toString();
+    }
+    if(time_left[2] < 10){
+        time_left[2] = '0' + time_left[2].toString();
+    }
+    //all values have been generated
+    //build the new embed
+    const New_Embed = new Discord.MessageEmbed()
+        .setTitle('Waiting for Replies...')
+        .setDescription(match_JSON.time + ' UTC')
+        .setColor('15ccc7')
+        .addField('**Coming**', coming.join('\n'))
+        .addField('**Maybe**', maybe.join('\n'))
+        .addField("**Can't Come**", not_coming.join('\n'))
+        .setFooter('Game starting in: ' + time_left.join(':'));
+    console.log(New_Embed);
+    Home_msg.edit(New_Embed);
+}
+
+function Profile(message){
+    //create an embed for a user showing their information
+    
+    var in_Arr = message.content.toString().toLowerCase().split(' ').slice(2)
+    const Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+    var user_obj = null;
+    var loop = 0;
+    if(in_Arr.length == 0){
+        Member_Data.Member_Objects.forEach(Element => {
+            if(Element.discord == message.author.id){
+                user_obj = Element;
+            }
+        })
+    }else{
+        const menu = fs.readFileSync('./menu.txt').toString().split('\n');
+        if(in_Arr[0].startsWith('u') && isNaN(in_Arr[0].slice(1)) == false && parseInt(in_Arr[0].slice(1), 10) < Member_Data.Member_Objects.length){
+            user_obj = Member_Data.Member_Objects[parseInt(in_Arr[0].slice(1), 10) - 1];
+        }else{
+            menu.forEach(Element => {
+                loop = 0;
+                while(loop < Element.split('|')[1].split(',').length){
+                    if(Element.split('|')[1].split(',')[loop] == in_Arr[0]){
+                        user_obj = Member_Data.Member_Objects[parseInt(Element.split('|')[0].slice(1), 10) - 1]
+                        loop = Element.split('|')[1].split(',').length;
+                    }
+                    loop++;
+                }
+            })
+        }
+    }
+    if(user_obj == null){
+        message.channel.send('Unable to determine user `' + in_Arr[0] + '`')
+        return;
+    }
+    console.log(user_obj)
+    //a user object has been obtained
+    //continue on to build a embed to display the data
+    const Profile_Embed = new Discord.MessageEmbed()
+        .setTitle(user_obj.alias)
+        .setColor(Member_Data.Team_Objects[parseInt(user_obj.team.slice(1), 10) - 1].color)
+        .setThumbnail(user_obj.img)
+    if(user_obj.pronouns == 'm'){
+        Profile_Embed.setDescription('(he/him)');
+    }else if(user_obj.pronouns == 'f'){
+        Profile_Embed.setDescription('(she/her)');
+    }else if(user_obj.pronouns == 'n'){
+        Profile_Embed.setDescription('(they/them)')
+    }
+    Profile_Embed
+        .addField('Team', Member_Data.Team_Objects[parseInt(user_obj.team.slice(1), 10) - 1].name)
+        .setFooter('Internal user ID: ' + user_obj.id, 'https://i.imgur.com/857yijB.png');
+    if(user_obj.timezone > -1){
+        Profile_Embed.addField('Timezone', 'UTC+' + user_obj.timezone.toString());
+    }else{
+        Profile_Embed.addField('Timezone', 'UTC' + user_obj.timezone.toString());
+    }
+    if(user_obj.notif == false){
+        Profile_Embed.addField('UHC Signup', 'not signed up');
+    }else{
+        Profile_Embed.addField('UHC Signup', 'signed up');
+    }
+    console.log(Profile_Embed)
+    message.channel.send(Profile_Embed)
+}
+
+function Join(message){
+    //a person has asked to join Stale Oreos
+    const Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+    var check = false;
+    Member_Data.Member_Objects.forEach(Element => {
+        if(Element.discord == message.author.id){
+            check = true;
+        }
+    })
+    if(check == true){
+        Profile(message);
+        return;
+    }
+    var new_uID = null;
+    Member_Data.Total_Members = Member_Data.Total_Members + 1;
+    if(Member_Data.Total_Members < 10){
+        new_uID = 'u00' + Member_Data.Total_Members.toString();
+    }else if(Member_Data.Total_Members < 100){
+        new_uID = 'u0' + Member_Data.Total_Members.toString();
+    }else{
+        new_uID = 'u' + Member_Data.Total_Members.toString();
+    }
+    var user_obj = {//create the object for this user, leave null the properties we will fill later on in this process
+        id: new_uID,
+        discord: message.author.id,
+        name: null,
+        alias: null,
+        pronouns: null,
+        team: null,
+        img: "https://i.imgur.com/857yijB.png",
+        notif: true,
+        timezone: 0
+    }
+    console.log(user_obj)
+    //need to collect their name, alias, pronouns, team and timezone
+    Join_alias(message, user_obj);
+}
+
+async function Join_alias(message, user_obj){
+    //called from function Join
+    //ask what their minecraft username is
+    //pass to Join_name
+
+    const q_Embed = new Discord.MessageEmbed()
+        .setTitle('What is your MineCraft username?')
+        .setColor('c711dd')
+        .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+    const question = await message.channel.send(q_Embed);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            question.delete();
+            return;
+        }
+        var alias = collected.first().content.toString();
+        if(alias.split(' ').length > 1){
+            message.channel.send('Improper format. Minecraft usernames must be one word')
+            question.delete();
+            return;
+        }
+        user_obj.alias = alias;
+        Join_name(message, user_obj);
+        question.delete();
+        collected.first().delete();
+    })
+}
+
+async function Join_name(message, user_obj){
+    //called from function Join_alias
+    //ask what their minecraft username is
+    //pass to Join_pronouns
+
+    const q_Embed = new Discord.MessageEmbed()
+        .setTitle('What is should I call you?')
+        .setColor('c711dd')
+        .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+    const question = await message.channel.send(q_Embed);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            question.delete();
+            return;
+        }
+        var name = collected.first().content.toString();
+        user_obj.name = name;
+        Join_pronouns(message, user_obj);
+        question.delete();
+        collected.first().delete();
+    })
+}
+
+async function Join_pronouns(message, user_obj){
+    //called from function Join_name
+    //ask what their pronouns are
+    //pass to Join_timezone
+
+    const q_Embed = new Discord.MessageEmbed()
+        .setTitle('What are your pronouns?')
+        .setDescription('Reply with one of the following letters:\nhe/him - m\nshe/her - f\nthey/them - n')
+        .setColor('c711dd')
+        .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+    const question = await message.channel.send(q_Embed);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            question.delete();
+            return;
+        }
+        var pronouns_in = collected.first().content.toString().toLowerCase();
+        if(pronouns_in.length > 1){
+            message.channel.send('Improper format. Reply must be one letter')
+            question.delete();
+            return;
+        }
+        if(pronouns_in == 'm' || pronouns_in == 'f' || pronouns_in == 'n'){
+            user_obj.pronouns = pronouns_in;
+            console.log(user_obj);
+        }else{
+            message.channel.send('Invalid response. This system can only handle m/f/n responses');
+            return;
+        }
+        Join_timezone(message, user_obj);
+        question.delete();
+        collected.first().delete();
+    })
+}
+
+async function Join_timezone(message, user_obj){
+    //called from Join_pronouns
+    //ask what their timezone is (in relation to UTC)
+    //call Join_team
+    
+    const q_Embed = new Discord.MessageEmbed()
+        .setTitle('What timezone are you in?')
+        .setDescription('Reply with how far ahead or behind you are from UTC\nif you are 4 hours behind UTC: -4\nif you are 6 hours ahead of UTC: 6')
+        .setColor('c711dd')
+        .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+    const question = await message.channel.send(q_Embed);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            question.delete();
+            return;
+        }
+        var timezone = collected.first().content.toString().toLowerCase();
+        timezone = parseInt(timezone, 10)
+        if(isNaN(timezone, 10) || timezone < -12 || timezone > 12){
+            message.channel.send('Improper format. Reply must be an integer between -12 and +12')
+            question.delete();
+            return;
+        }
+        user_obj.timezone = timezone;
+        console.log(user_obj);
+        Join_team(message, user_obj);
+        question.delete();
+        collected.first().delete();
+    })
+}
+
+async function Join_team(message, user_obj){
+    //called from Join_timezone
+    //ask what faction the member is in
+    //final function in this array
+
+    const q_Embed = new Discord.MessageEmbed()
+        .setTitle('What faction are you in?')
+        .setColor('c711dd')
+        .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+    const Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+    const emojis = ['1⃣', '2⃣', '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '🔟'];
+    const temp_Embed = new Discord.MessageEmbed()
+        .setTitle('Loading...');
+    const question = await message.channel.send(temp_Embed);
+    var loop = 0;
+    while(loop < Member_Data.Team_Objects.length && loop < 10){
+        await question.react(emojis[loop]);
+        loop++;
+    }
+    var body = [];
+    loop = 0;
+    while(loop < Member_Data.Team_Objects.length && loop < 10){
+        body[body.length] = emojis[loop] + '. ' + Member_Data.Team_Objects[loop].name;
+        loop++;
+    }
+    q_Embed.addField('React to choose a team:', body.join('\n'));
+    question.edit(q_Embed)
+    const filter = (reaction, user) => {
+        return['1⃣', '2⃣', '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '🔟'].includes(reaction.emoji.name) && user.id === message.author.id;
+    }
+    const selection = await question.awaitReactions(filter, {max: 1, time: 60000})
+        .then(collected => {
+            if(collected.size == 0){
+                message.channel.send('Operation timed out');
+                question.delete();
+                return;
+            }
+            const reaction = collected.first();
+            var team_selected = null;
+            if(reaction.emoji.name === '1⃣' && Member_Data.Team_Objects.length > 0){
+                team_selected = 't001';
+            }else if(reaction.emoji.name === '2⃣' && Member_Data.Team_Objects.length > 1){
+                team_selected = 't002';
+            }else if(reaction.emoji.name === '3⃣' && Member_Data.Team_Objects.length > 2){
+                team_selected = 't003';
+            }else if(reaction.emoji.name === '4⃣' && Member_Data.Team_Objects.length > 3){
+                team_selected = 't004';
+            }else if(reaction.emoji.name === '5⃣' && Member_Data.Team_Objects.length > 4){
+                team_selected = 't005';
+            }else if(reaction.emoji.name === '6⃣' && Member_Data.Team_Objects.length > 5){
+                team_selected = 't006';
+            }else if(reaction.emoji.name === '7⃣' && Member_Data.Team_Objects.length > 6){
+                team_selected = 't007';
+            }else if(reaction.emoji.name === '8⃣' && Member_Data.Team_Objects.length > 7){
+                team_selected = 't008';
+            }else if(reaction.emoji.name === '9⃣' && Member_Data.Team_Objects.length > 8){
+                team_selected = 't009';
+            }else if(reaction.emoji.name === '🔟' && Member_Data.Team_Objects.length > 9){
+                team_selected = 't010';
+            }
+            if(team_selected == null){
+                message.channel.send('Invalid selection.');
+                return;
+            }
+            user_obj.team = team_selected;
+            //all data has been gathered
+            //save into the member data json
+            const Reload_Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));//it's possible another user made an edit since we began this function, reload to avoid overwriting data
+            Reload_Member_Data.Member_Objects[parseInt(user_obj.id.slice(1), 10) - 1] = user_obj;
+            Reload_Member_Data.Total_Members = Reload_Member_Data.Member_Objects.length;
+            fs.writeFileSync('./Member_Data_Main.json', JSON.stringify(Reload_Member_Data, null, 4), 'utf8');
+            var user_menu = fs.readFileSync('./menu.txt').toString().split('\n');
+            user_menu[user_menu.length] = user_obj.id + '|' + user_obj.name.toLowerCase() + ',' + user_obj.alias.toLowerCase();
+            fs.writeFileSync('./menu.txt', user_menu.join('\n'));
+            console.log(user_obj);
+            message.channel.send('User Profile successfully created ✅\nTo get a custom thumbnail image, DM dandera.');
+            Profile(message);
+            question.delete();
+        })
+        
+
+}
+
+function Enter_game(message){
+    //user wants to enter a game
+    //create an object to store all relevant data and collect all data from user
+    //this process will be multiple functions
+
+    const Game_Data = JSON.parse(fs.readFileSync('./Game_Data_Main.json', 'utf8'));
+    var game_id = null;
+    if(Game_Data.Total_Games + 1 < 10){
+        game_id = 'g00' + (Game_Data.Total_Games + 1).toString();
+    }else if(Game_Data.Total_Games + 1 < 100){
+        game_id = 'g0' + (Game_Data.Total_Games + 1).toString();
+    }else{
+        game_id = 'g' + (Game_Data.Total_Games + 1).toString();
+    }
+    var game_obj = {
+        id: game_id,
+        date: null,
+        title: null,
+        isSolo: null,
+        participants: []
+    }
+    Enter_game_date(message, game_obj);
+}
+
+async function Enter_game_date(message, game_obj){
+    console.log(game_obj);
+    const q_Embed = new Discord.MessageEmbed()
+        .setTitle('When was the game played?')
+        .setDescription('format your response as\nyear-month-day\nexample: 2021-3-20')
+        .setColor('c711dd')
+        .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+    const question = await message.channel.send(q_Embed);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            question.delete();
+            return;
+        }
+        var date = [];
+        date = collected.first().toString().split('-')
+        if(date.length != 3){
+            message.channel.send('Improper format. Reply must be in year-month-day format');
+            return;
+        }
+        var loop = 0;
+        while(loop < 3){
+            date[loop] = parseInt(date[loop], 10);
+            if(isNaN(date[loop]) == true){
+                message.channel.send('Improper format. Reply must be in year-month-day format');
+                return;
+            }
+            loop++;
+        }
+        if(date[0] < 2010){
+            message.channel.send('`' + date[0] + '` is not a valid year.')
+            return;
+        }
+        if(date[1] < 1 || date[1] > 12){
+            message.channel.send('`' + date[1] + '` is not a valid month.');
+            return;
+        }
+        if(date[2] < 1 || date[2] > 31){
+            message.channel.send('`' + date[2] + '` is not a valid day.');
+            return;
+        }
+        var date_str = date[0].toString() + '-'
+        if(date[1] < 10){
+            date_str = date_str + '0' + date[1].toString() + '-';
+        }else{
+            date_str = date_str + date[1].toString() + '-';
+        }
+        if(date[2] < 10){
+            date_str = date_str + '0' + date[2].toString();
+        }else{
+            date_str = date_str + date[2].toString();
+        }
+        game_obj.date = date_str;
+        Enter_game_type(message, game_obj);
+    })
+}
+
+async function Enter_game_type(message, game_obj){
+    //function called by Enter_game
+    //determine if the game was solo or teams
+    //pass on to Enter_game_participants
+
+    console.log(game_obj);
+    const q_Embed = new Discord.MessageEmbed()
+        .setTitle('Was the game solo or teams?')
+        .setDescription('Solo - s\nTeams - t')
+        .setColor('c711dd')
+        .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+    const question = await message.channel.send(q_Embed);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            question.delete();
+            return;
+        }
+        var gameType = null;
+        var reply = collected.first().toString().toLowerCase()
+        if(reply == 's' || reply == 'solo'){
+            gameType = true;
+        }else if(reply == 't' || reply == 'team' || reply == 'teams'){
+            gameType = false;
+        }else{
+            message.channel.send('Unable to determine `' + reply + '`. Try `s!o help enter`');
+            return
+        }
+        game_obj.isSolo = gameType;
+        Enter_game_participants(message, game_obj);
+    })
+}
+
+async function Enter_game_participants(message, game_obj){
+    //function called by Enter_game
+    //determine if the game was solo or teams
+    //pass on to Enter_game_participants
+
+    console.log(game_obj);
+    const q_Embed = new Discord.MessageEmbed()
+        .setTitle('Who played in the match?')
+        .setColor('c711dd')
+        .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+    const question = await message.channel.send(q_Embed);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            question.delete();
+            return;
+        }
+        var participants = [];
+        var reply = collected.first().toString().toLowerCase().split(' ');
+        if(reply.length < 2){
+            message.channel.send('There must be at least 2 participants.');
+            return;
+        }
+        const Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+        const menu = fs.readFileSync('./menu.txt').toString().split('\n');
+        var loop = 0;
+        var inloop = 0;
+        var check = false;
+        reply.forEach(Element => {
+            if(Element.startsWith('u') && isNaN(Element.slice(1)) == false){//the input is a user ID
+                //check to see if its a valid user ID
+                if(parseInt(Element.slice(1), 10) - 1 < Member_Data.Total_Members){
+                    if(parseInt(Element.slice(1), 10) < 10){
+                        participants[participants.length] = 'u00' + parseInt(Element.slice(1), 10);
+                    }else if(parseInt(Element.slice(1), 10) < 100){
+                        participants[participants.length] = 'u0' + parseInt(Element.slice(1), 10);
+                    }else{
+                        participants[participants.length] = 'u' + parseInt(Element.slice(1), 10);
+                    }
+                }else{
+                    message.channel.send('Unable to determine input `'  + Element + '`');
+                    return;
+                }
+            }else{
+                loop = 0;
+                check = false;
+                while(loop < menu.length){
+                    inloop = 0;
+                    while(inloop < menu[loop].split('|')[1].split(',').length){
+                        if(menu[loop].split('|')[1].split(',')[inloop] == Element){
+                            participants[participants.length] = menu[loop].split('|')[0];
+                            check = true;
+                        }
+                        inloop++;
+                    }
+                    loop++;
+                }
+                if(check == false){
+                    message.channel.send('Unable to determine input `' + Element + '`')
+                }
+            }
+        })
+        game_obj.participants = participants;
+        if(game_obj.isSolo == true){
+            var game_file_obj_solo = {
+                date: game_obj.date,
+                title: null,
+                isSolo: game_obj.isSolo,
+                winner: null,
+                runner_up: null,
+                first_blood: null,
+                first_death: null,
+                videolink: null,
+                participants: []
+            }
+            game_obj.participants.forEach(Element => {
+                game_file_obj_solo.participants[game_file_obj_solo.participants.length] = {
+                    id: Element,
+                    kills: null,
+                    died: null
+                }
+            })
+            Enter_game_winner(message, game_obj, game_file_obj_solo);
+        }else{
+            var game_file_obj_team = {
+                date: game_obj.date,
+                title: null,
+                isSolo: game_obj.isSolo,
+                winner: null,
+                runner_up: null,
+                first_blood: null,
+                first_death: null,
+                videolink: null,
+                teams: [],
+                participants: []
+            }
+            Enter_game_teams(message, game_obj, game_file_obj_team);
+        }
+    })
+}
+
+async function Enter_game_teams(message, game_obj, game_file_obj){
+    //function called by Enter_game_participants
+    //get a list of teams in this game
+    //pass on to Enter_game_team_members
+
+    console.log(game_obj);
+    const q_Embed = new Discord.MessageEmbed()
+        .setTitle('What teams played in the match?')
+        .setColor('c711dd')
+        .setDescription('respond with color names\nblack\ndark_blue\ndark_green\ndark_aqua\ndark_red\ndark_purple - purple\ngold\ngray\ndark_gray\nblue\ngreen\naqua\nred\nmagenta - light_purple\nyellow\nwhite')
+        .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+    const question = await message.channel.send(q_Embed);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            question.delete();
+            return;
+        }
+        var teams = [];
+        var reply = collected.first().toString().toLowerCase().split(' ');
+        if(reply.length < 2){
+            message.channel.send('There must be at least 2 teams.');
+            return;
+        }
+        const Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+        reply.forEach(Element => {
+            if(Element == 'black'){
+                teams[teams.length] = 'Black';
+            }else if(Element == 'dark_blue' || Element == 'd_blue'){
+                teams[teams.length] = 'Dark Blue';
+            }else if(Element == 'dark_green' || Element == 'd_green'){
+                teams[teams.length] = 'Dark Green';
+            }else if(Element == 'dark_aqua' || Element == 'd_aqua'){
+                teams[teams.length] = 'Dark Aqua';
+            }else if(Element == 'dark_red' || Element == 'd_red'){
+                teams[teams.length] = 'Dark Red';
+            }else if(Element == 'dark_purple' || Element == 'd_purple' || Element == 'purple'){
+                teams[teams.length] = 'Purple';
+            }else if(Element == 'gold' || Element == 'orange'){
+                teams[teams.length] = 'Orange';
+            }else if(Element == 'gray' || Element == 'grey'){
+                teams[teams.length] = 'Gray';
+            }else if(Element == 'dark_gray' || Element == 'dark_grey' || Element == 'd_gray' || Element == 'd_grey'){
+                teams[teams.length] = 'Dark Gray';
+            }else if(Element == 'blue'){
+                teams[teams.length] = 'Blue';
+            }else if(Element == 'green'){
+                teams[teams.length] = 'Green';
+            }else if(Element == 'aqua'){
+                teams[teams.length] = 'Aqua';
+            }else if(Element == 'red'){
+                teams[teams.length] = 'Red';
+            }else if(Element == 'light_purple' || Element == 'l_purple' || Element == 'magenta' || Element == 'pink'){
+                teams[teams.length] = 'Magenta';
+            }else if(Element == 'yellow'){
+                teams[teams.length] = 'Yellow';
+            }else if(Element == 'white'){
+                teams[teams.length] = 'White';
+            }else{
+                message.channel.send('Unable to determine input `' + Element + '`');
+                return;
+            }
+        })
+        if(teams.length > (game_obj.participants.length / 2)){
+            message.channel.send('Error, too many teams. There must be at least two players per team.');
+            return;
+        }
+        game_file_obj.teams = teams;
+        game_obj.participants.forEach(Element => {
+            game_file_obj.participants[game_file_obj.participants.length] = {
+                id: Element,
+                team: null,
+                kills: null,
+                died: null
+            }
+        })
+        Enter_game_team_participants(message, game_obj, game_file_obj, 0);    
+    })
+}
+
+async function Enter_game_team_participants(message, game_obj, game_file_obj, pos){
+    //function called by Enter_game_teams
+    //get a list of teams in this game
+    //pass on to Enter_game_team_members
+
+    console.log(game_obj);
+    const q_Embed = new Discord.MessageEmbed()
+        .setTitle('Who was in ' + game_file_obj.teams[pos] + ' Team')
+        .setColor('c711dd')
+        .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+    const question = await message.channel.send(q_Embed);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            question.delete();
+            return;
+        }
+        var participants = [];
+        var reply = collected.first().toString().toLowerCase().split(' ');
+        if(reply.length < 2){
+            message.channel.send('There must be at least 2 players per team.');
+            return;
+        }
+        const menu = fs.readFileSync('./menu.txt').toString().split('\n');
+        var loop = 0;
+        var inloop = 0;
+        var check = false;
+        reply.forEach(Element => {
+            loop = 0;
+            check = false;
+            while(loop < menu.length){
+                inloop = 0;
+                while(inloop < menu[loop].split('|')[1].split(',').length){
+                    if(menu[loop].split('|')[1].split(',')[inloop] == Element){
+                        check = true;
+                        participants[participants.length] = menu[loop].split('|')[0];
+                    }
+                    inloop++;
+                }
+                loop++;
+            }
+            if(check == false){
+                message.channel.send('Unable to determine input `' + Element + '`');
+                return;
+            }
+        })
+        var check = false;
+        participants.forEach(Element => {
+            loop = 0;
+            check = false;
+            while(loop < game_file_obj.participants.length){
+                if(game_file_obj.participants[loop].id == Element){
+                    if(game_file_obj.participants[loop].team != null){
+                        message.channel.send('Error. Can not add one person to two different teams');
+                        return;
+                    }
+                    check = true;
+                    game_file_obj.participants[loop].team = game_file_obj.teams[pos];
+                    loop = game_file_obj.participants.length;
+                }
+                loop++
+            }
+            if(check == false){
+                message.channel.send('Error. Can not add a user to a team who did not play in the game.');
+                return;
+            }
+        })
+        if(pos == game_file_obj.teams.length - 2){
+            game_file_obj.participants.forEach(Element => {
+                if(Element.team == null){
+                    Element.team = game_file_obj.teams[pos + 1];
+                }
+            })
+            Enter_game_winner_team(message, game_obj, game_file_obj)
+        }else{
+            Enter_game_team_participants(message, game_obj, game_file_obj, pos + 1);
+        }
+    })
+}
+
+async function Enter_game_winner_team(message, game_obj, game_file_obj){
+    console.log(game_obj)
+    console.log(game_file_obj)
+
+    const q_Embed = new Discord.MessageEmbed()
+        .setTitle('Who won?')
+        .setDescription('Reply with the team color\nIf the color is two words (ex: dark blue) use an underscore: dark_blue')
+        .setColor('c711dd')
+        .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+    const question = await message.channel.send(q_Embed);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            question.delete();
+            return;
+        }
+        var win_in = collected.first().toString().toLowerCase();
+        if(win_in.split(' ').length != 1){
+            message.channel.send('Error. Reply must be one word.')
+            return;
+        }
+        var winner = null;
+        if(win_in == 'black' && game_file_obj.teams.includes('Black')){
+            winner = 'Black';
+        }else if(win_in == 'dark_blue' && game_file_obj.teams.includes('Dark Blue')){
+            winner = 'Dark Blue';
+        }else if(win_in == 'dark_green' && game_file_obj.teams.includes('Dark Green')){
+            winner = 'Dark Green';
+        }else if(win_in == 'dark_aqua' && game_file_obj.teams.includes('Dark Aqua')){
+            winner = 'Dark Aqua';
+        }else if(win_in == 'dark_red' && game_file_obj.teams.includes('Dark Red')){
+            winner = 'Dark Red';
+        }else if(win_in == 'dark_purple' && game_file_obj.teams.includes('Purple') || win_in == 'purple' && game_file_obj.teams.includes('Purple')){
+            winner = 'Purple';
+        }else if(win_in == 'gold' && game_file_obj.teams.includes('Orange') || win_in == 'orange' && game_file_obj.teams.includes('Orange')){
+            winner = 'Orange';
+        }else if(win_in == 'gray' && game_file_obj.teams.includes('Gray') || win_in == 'grey' && game_file_obj.teams.includes('Gray')){
+            winner = 'Gray';
+        }else if(win_in == 'dark_gray' && game_file_obj.teams.includes('Dark Gray') || win_in == 'dark_grey' && game_file_obj.teams.includes('Dark Gray')){
+            winner = 'Dark Gray';
+        }else if(win_in == 'blue' && game_file_obj.teams.includes('Blue')){
+            winner = 'Blue';
+        }else if(win_in == 'green' && game_file_obj.teams.includes('Green')){
+            winner = 'Green';
+        }else if(win_in == 'aqua' && game_file_obj.teams.includes('Aqua')){
+            winner = 'Aqua';
+        }else if(win_in == 'red' && game_file_obj.teams.includes('Red')){
+            winner = 'Red';
+        }else if(win_in == 'light_purple' && game_file_obj.teams.includes('Magenta') || win_in == 'magenta' && game_file_obj.teams.includes('Magenta') || win_in == 'pink' && game_file_obj.teams.includes('Magenta')){
+            winner = 'Magenta';
+        }else if(win_in == 'yellow' && game_file_obj.teams.includes('Yellow')){
+            winner = 'Yellow';
+        }else if(win_in == 'white' && game_file_obj.teams.includes('White')){
+            winner = 'White';
+        }else{
+            message.channel.send('Unable to determine input `' + win_in + '`');
+            return;
+        }
+        if(winner == null){
+            return;
+        }
+        game_file_obj.winner = winner;
+        game_file_obj.participants.forEach(Element => {//go through participants, if they weren't on the winning team. set their died status to true
+            if(Element.team != winner){
+                Element.died = true;
+            }
+        })
+        if(game_file_obj.teams.length == 2){//if there are only two teams, we can already tell who the runner-up team is
+            //set game_file_obj.runner_up to the other team
+            if(winner == game_file_obj.teams[0]){
+                game_file_obj.runner_up = game_file_obj.teams[1];
+            }else{
+                game_file_obj.runner_up = game_file_obj.teams[0];
+            }
+            Enter_game_firstblood(message, game_obj, game_file_obj)
+        }else{
+            Enter_game_team_runnerup(message, game_obj, game_file_obj)
+        }
+    })
+    
+}
+
+async function Enter_game_team_runnerup(message, game_obj, game_file_obj){
+    console.log(game_obj)
+    console.log(game_file_obj)
+
+    const q_Embed = new Discord.MessageEmbed()
+        .setTitle('Who was the Runner-up?')
+        .setDescription('Reply with the team color\nIf the color is two words (ex: dark blue) use an underscore: dark_blue')
+        .setColor('c711dd')
+        .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+    const question = await message.channel.send(q_Embed);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            question.delete();
+            return;
+        }
+        var runner_in = collected.first().toString().toLowerCase();
+        if(runner_in.split(' ').length != 1){
+            message.channel.send('Error. Reply must be one word.')
+            return;
+        }
+        var runner_up = null;
+        if(runner_in == 'black' && game_file_obj.teams.includes('Black')){
+            runner_up = 'Black';
+        }else if(runner_in == 'dark_blue' && game_file_obj.teams.includes('Dark Blue')){
+            runner_up = 'Dark Blue';
+        }else if(runner_in == 'dark_green' && game_file_obj.teams.includes('Dark Green')){
+            runner_up = 'Dark Green';
+        }else if(runner_in == 'dark_aqua' && game_file_obj.teams.includes('Dark Aqua')){
+            runner_up = 'Dark Aqua';
+        }else if(runner_in == 'dark_red' && game_file_obj.teams.includes('Dark Red')){
+            runner_up = 'Dark Red';
+        }else if(runner_in == 'dark_purple' && game_file_obj.teams.includes('Purple') || runner_in == 'purple' && game_file_obj.teams.includes('Purple')){
+            runner_up = 'Purple';
+        }else if(runner_in == 'gold' && game_file_obj.teams.includes('Orange') || runner_in == 'orange' && game_file_obj.teams.includes('Orange')){
+            runner_up = 'Orange';
+        }else if(runner_in == 'gray' && game_file_obj.teams.includes('Gray') || runner_in == 'grey' && game_file_obj.teams.includes('Gray')){
+            runner_up = 'Gray';
+        }else if(runner_in == 'dark_gray' && game_file_obj.teams.includes('Dark Gray') || runner_in == 'dark_grey' && game_file_obj.teams.includes('Dark Gray')){
+            runner_up = 'Dark Gray';
+        }else if(runner_in == 'blue' && game_file_obj.teams.includes('Blue')){
+            runner_up = 'Blue';
+        }else if(runner_in == 'green' && game_file_obj.teams.includes('Green')){
+            runner_up = 'Green';
+        }else if(runner_in == 'aqua' && game_file_obj.teams.includes('Aqua')){
+            runner_up = 'Aqua';
+        }else if(runner_in == 'red' && game_file_obj.teams.includes('Red')){
+            runner_up = 'Red';
+        }else if(runner_in == 'light_purple' && game_file_obj.teams.includes('Magenta') || runner_in == 'magenta' && game_file_obj.teams.includes('Magenta') || runner_in == 'pink' && game_file_obj.teams.includes('Magenta')){
+            runner_up = 'Magenta';
+        }else if(runner_in == 'yellow' && game_file_obj.teams.includes('Yellow')){
+            runner_up = 'Yellow';
+        }else if(runner_in == 'white' && game_file_obj.teams.includes('White')){
+            runner_up = 'White';
+        }else{
+            message.channel.send('Unable to determine input `' + win_in + '`');
+            return;
+        }
+        if(runner_up == null){
+            return;
+        }
+        game_file_obj.runner_up = runner_up;
+        Enter_game_firstblood(message, game_obj, game_file_obj)
+    })
+}
+
+async function Enter_game_winner(message, game_obj, game_file_obj){
+    console.log(game_obj, game_file_obj)
+    const q_Embed = new Discord.MessageEmbed()
+        .setTitle('Who won?')
+        .setColor('c711dd')
+        .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+    const question = await message.channel.send(q_Embed);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            question.delete();
+            return;
+        }
+        var win_in = collected.first().toString().toLowerCase();
+        if(win_in.split(' ').length > 1){
+            message.channel.send('Improper input. There can only be one winner in a solo game.');
+            return;
+        }
+        const menu = fs.readFileSync('./menu.txt').toString().split('\n');
+        var winner = null;
+        var loop = 0;
+        menu.forEach(Element => {
+            loop = 0;
+            while(loop < Element.split('|')[1].split(',').length){
+                if(Element.split('|')[1].split(',')[loop] == win_in){
+                    winner = Element.split('|')[0];
+                }
+                loop++;
+            }
+        })
+        if(winner == null){
+            message.channel.send('Unable to determine input `' + win_in + '`');
+            return;
+        }
+        game_file_obj.winner = winner;
+        game_file_obj.participants.forEach(Element => {
+            if(Element.id != winner){
+                Element.died = true;
+            }else{
+                Element.died = false;
+            }
+        })
+        Enter_game_runnerup(message, game_obj, game_file_obj);
+    })
+}
+
+async function Enter_game_runnerup(message, game_obj, game_file_obj){
+    console.log(game_obj, game_file_obj)
+    const q_Embed = new Discord.MessageEmbed()
+        .setTitle('Who was the Runner-up?')
+        .setColor('c711dd')
+        .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+    const question = await message.channel.send(q_Embed);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            question.delete();
+            return;
+        }
+        var win_in = collected.first().toString().toLowerCase();
+        if(win_in.split(' ').length > 1){
+            message.channel.send('Improper input. There can only be one winner in a solo game.');
+            return;
+        }
+        const menu = fs.readFileSync('./menu.txt').toString().split('\n');
+        var runnerup = null;
+        var loop = 0;
+        menu.forEach(Element => {
+            loop = 0;
+            while(loop < Element.split('|')[1].split(',').length){
+                if(Element.split('|')[1].split(',')[loop] == win_in){
+                    runnerup = Element.split('|')[0];
+                }
+                loop++;
+            }
+        })
+        if(runnerup == null){
+            message.channel.send('Unable to determine input `' + win_in + '`');
+            return;
+        }
+        game_file_obj.runner_up = runnerup;
+        Enter_game_firstblood(message, game_obj, game_file_obj);
+    })
+}
+
+async function Enter_game_firstblood(message, game_obj, game_file_obj){
+    console.log(game_obj, game_file_obj)
+    const q_Embed = new Discord.MessageEmbed()
+        .setTitle('Who got the first kill of the game?')
+        .setDescription('If there was no pvp kills, reply wih the world "null"')
+        .setColor('c711dd')
+        .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+    const question = await message.channel.send(q_Embed);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            question.delete();
+            return;
+        }
+        var blood_in = collected.first().toString().toLowerCase();
+        if(blood_in.split(' ').length > 1){
+            message.channel.send('Improper input. There can only be one first kill');
+            return;
+        }
+        const menu = fs.readFileSync('./menu.txt').toString().split('\n');
+        var first_blood = null;
+        var loop = 0;
+        menu.forEach(Element => {
+            loop = 0;
+            while(loop < Element.split('|')[1].split(',').length){
+                if(Element.split('|')[1].split(',')[loop] == blood_in){
+                    first_blood = Element.split('|')[0];
+                }
+                loop++;
+            }
+        })
+        if(first_blood == null && blood_in != 'null'){
+            message.channel.send('Unable to determine input `' + blood_in + '`');
+            return;
+        }
+        if(blood_in == 'null'){
+            first_blood = null;
+        }
+        game_file_obj.first_blood = first_blood;
+        Enter_game_firstdeath(message, game_obj, game_file_obj);
+    })
+}
+
+async function Enter_game_firstdeath(message, game_obj, game_file_obj){
+    console.log(game_obj, game_file_obj)
+    const q_Embed = new Discord.MessageEmbed()
+        .setTitle('Who was the first to die in the game?')
+        .setColor('c711dd')
+        .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+    const question = await message.channel.send(q_Embed);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            question.delete();
+            return;
+        }
+        var death_in = collected.first().toString().toLowerCase();
+        if(death_in.split(' ').length > 1){
+            message.channel.send('Improper input. There can only be one first death');
+            return;
+        }
+        const menu = fs.readFileSync('./menu.txt').toString().split('\n');
+        var first_death = null;
+        var loop = 0;
+        menu.forEach(Element => {
+            loop = 0;
+            while(loop < Element.split('|')[1].split(',').length){
+                if(Element.split('|')[1].split(',')[loop] == death_in){
+                    first_death = Element.split('|')[0];
+                }
+                loop++;
+            }
+        })
+        if(first_death == null){
+            message.channel.send('Unable to determine input `' + death_in + '`');
+            return;
+        }
+        game_file_obj.first_death = first_death;
+        game_file_obj.participants.forEach(Element => {
+            if(Element.id == first_death){
+                Element.died = true;
+            }
+        })
+        if(game_obj.isSolo == true){
+            Enter_game_kills(message, game_obj, game_file_obj, 0);
+        }else{
+            Enter_game_deaths(message, game_obj, game_file_obj, 0);
+        }
+        
+    })
+}
+
+async function Enter_game_deaths(message, game_obj, game_file_obj, pos){
+    if(game_file_obj.participants[pos].died == true){
+        //this player has already been determined to be dead
+        //no need to ask if they died
+        if(game_file_obj.participants.length == pos + 1){//all users have been checked for deaths
+            Enter_game_kills(message, game_obj, game_file_obj, pos);
+        }else{
+            Enter_game_deaths(message, game_obj, game_file_obj, pos + 1);//check the next user
+        }
+    }else{//the user's died porperty is null. Check to see if they died in the game
+        const Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+        const q_Embed = new Discord.MessageEmbed()
+            .setTitle('Did ' + Member_Data.Member_Objects[parseInt(game_obj.participants[pos].slice(1), 10) - 1].alias + ' survive to the end of the game?')
+            .setDescription('Yes - y\nNo - n')
+            .setColor('c711dd')
+            .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+        const question = await message.channel.send(q_Embed);
+        const filter = m => message.content.author == message.channel.author;
+        const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });
+        collector.on('end', collected => {
+            if(collected.size == 0){
+                message.channel.send('Operation timed out.');
+                question.delete();
+                return;
+            }
+            var died = null;
+            var reply = collected.first().toString().toLowerCase();
+            if(reply == 'y' || reply == 'yes'){
+                died = false;
+            }else if(reply == 'n' || reply == 'no'){
+                died = true;
+            }else{
+                message.channel.send('Unable to determine `' + reply + '`. Try `s!o help enter`');
+                return
+            }
+            game_file_obj.participants[pos].died = died;
+            if(game_obj.participants.length == pos + 1){
+                Enter_game_kills(message, game_obj, game_file_obj, 0);
+            }else{
+                Enter_game_deaths(message, game_obj, game_file_obj, pos + 1);
+            }
+        })
+    }
+}
+
+async function Enter_game_kills(message, game_obj, game_file_obj, pos){
+    console.log(game_obj, game_file_obj)
+    const Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+    var pronouns = null
+    if(Member_Data.Member_Objects[parseInt(game_obj.participants[pos].slice(1), 10)].pronouns == 'm'){
+        pronouns = 'he';
+    }else if(Member_Data.Member_Objects[parseInt(game_obj.participants[pos].slice(1), 10)].pronouns == 'f'){
+        pronouns = 'she';
+    }else{
+        pronouns = 'they';
+    }
+    const q_Embed = new Discord.MessageEmbed()
+        .setTitle('How many kills did ' + Member_Data.Member_Objects[parseInt(game_obj.participants[pos].slice(1), 10) - 1].alias + ' get?')
+        .setDescription('reply with a whole number\nIf ' + pronouns + ' got no kills, reply with "0"')
+        .setColor('c711dd')
+        .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+    const question = await message.channel.send(q_Embed);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            question.delete();
+            return;
+        }
+        var reply = parseInt(collected.first(), 10);
+        if(isNaN(reply)){
+            message.channel.send('Reply must be a whole number.');
+            return;
+        }
+        game_file_obj.participants[pos].kills = reply;
+        if(game_obj.participants.length == (pos + 1)){
+            Enter_game_title(message, game_obj, game_file_obj);
+        }else{
+            Enter_game_kills(message, game_obj, game_file_obj, pos + 1);
+        }
+    })
+}
+
+async function Enter_game_title(message, game_obj, game_file_obj){
+    console.log(game_obj, game_file_obj);
+    const q_Embed = new Discord.MessageEmbed()
+        .setTitle('What would you like to call this game?')
+        .setDescription('This can be changed later')
+        .setColor('c711dd')
+        .setAuthor('@' + message.author.username, 'https://i.imgur.com/857yijB.png');
+    const question = await message.channel.send(q_Embed);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            question.delete();
+            return;
+        }
+        
+        var title = collected.first().toString();
+        game_obj.title = title;
+        game_file_obj.title = title;
+        Enter_game_end(message, game_obj, game_file_obj);
+    })
+}
+
+function Enter_game_end(message, game_obj, game_file_obj){
+    console.log(game_obj, game_file_obj);
+    var Game_Data = JSON.parse(fs.readFileSync('./Game_Data_Main.json', 'utf8'));
+    Game_Data.Game_History[Game_Data.Game_History.length] = game_obj;
+    Game_Data.Total_Games = Game_Data.Total_Games + 1;
+    fs.writeFileSync('./Game_Data_Main.json', JSON.stringify(Game_Data, null, 4), 'utf8');
+    fs.writeFileSync('./Game_Data/' + game_obj.id + '.json', JSON.stringify(game_file_obj, null, 4), 'utf8');
+    Print_Game_Card(message, game_obj.id)
+}
+
+async function Edit_profile_data(message){
+    //a user wants to make an edit to their profile.
+    //Determine which user this is and then determine what they want to edit
+    var Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+    var member_obj = null;
+    Member_Data.Member_Objects.forEach(Element => {
+        if(Element.discord == message.author.id){
+            member_obj = Element
+        }
+    })
+    if(member_obj == null){
+        message.channel.send('Error, unable to finder user <@' + message.author + '> on file.\nTry `s!o help edit profile` or `s!o join`');
+        return;
+    }
+    const menu_embed = new Discord.MessageEmbed()
+        .setTitle('Loading...');
+    const menu_msg = await message.channel.send(menu_embed);
+    //load a reaction menu
+    const emojis = ['1⃣', '2⃣', '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '🔟'];
+    //option 1 - name
+    //option 2 - alias
+    //option 3 - pronounse
+    //option 4 - team
+    //option 5 - image
+    //option 6 - notif
+    //option 7 - timezone
+    var loop = 0;
+    while(loop < 7){
+        await menu_msg.react(emojis[loop]);
+        loop++;
+    }
+    menu_embed
+        .setTitle('Profile Settings')
+        .setColor(Member_Data.Team_Objects[parseInt(member_obj.team.slice(1), 10) - 1].color)
+        .addField('Chose one of the following with a reaction...', '1⃣ - Name\n2⃣ - MineCraft Username\n3⃣ - Pronouns\n4⃣ - Faction\n5⃣ - image\n6⃣ - UHC Notifications\n7⃣ - timezone');
+    menu_msg.edit(menu_embed);
+    const filter = (reaction, user) => {
+        return['1⃣', '2⃣', '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '🔟'].includes(reaction.emoji.name) && user.id === message.author.id;
+    }//set up a reaction collector to get the users answer to the menu
+    const selection = await menu_msg.awaitReactions(filter, {max: 1, time: 60000})
+        .then(collected => {
+            if(collected.size == 0){
+                message.channel.send('Operation timed out.');
+                menu_msg.delete();
+                return;
+            }
+            const reaction = collected.first();//take the returned message and pass forward to the appropriate function to continue the process
+            if(reaction.emoji.name === '1⃣'){
+                Edit_profile_name(message, member_obj);
+                menu_msg.delete();
+            }else if(reaction.emoji.name === '2⃣'){
+                Edit_profile_alias(message, member_obj);
+                menu_msg.delete();
+            }else if(reaction.emoji.name === '3⃣'){
+                Edit_profile_pronouns(message, member_obj);
+                menu_msg.delete();
+            }else if(reaction.emoji.name === '4⃣'){
+                Edit_profile_faction(message, member_obj);
+                menu_msg.delete();
+            }else if(reaction.emoji.name === '5⃣'){
+                Edit_profile_image(message, member_obj);
+                menu_msg.delete();
+            }else if(reaction.emoji.name === '6⃣'){
+                Edit_profile_notifs(message, member_obj);
+                menu_msg.delete();
+            }else if(reaction.emoji.name === '7⃣'){
+                Edit_profile_timezone(message, member_obj);
+                menu_msg.delete();
+            }else{
+                message.channel.send('Invalid input "' + reaction + '"');
+                return;
+            }
+        })
+}
+
+async function Edit_profile_name(message, user_obj){
+    //edit the name for a user
+    var Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+    const question = new Discord.MessageEmbed()
+        .setTitle('What should I call you?')
+        .setColor(Member_Data.Team_Objects[parseInt(user_obj.team.slice(1), 10) - 1].color)
+        .setDescription('your name is currently set to "' + user_obj.name + '"');
+    const prompt = await message.channel.send(question);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });//create a message collector to get the reply
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            prompt.delete();
+            return;
+        }
+        var reply = collected.first().toString();
+        if(reply.length > 200){//check to make sure the answer isnt too long
+            message.channel.send('Your name must be less than 200 characters');
+            return;
+        }
+        user_obj.name = reply;
+        Member_Data.Member_Objects[parseInt(user_obj.id.slice(1), 10) - 1] = user_obj;
+        message.channel.send('Your name has been set to `' + reply + '`');
+        fs.writeFileSync('./Member_Data_Main.json', JSON.stringify(Member_Data, null, 4), 'utf8');
+    })
+}
+
+async function Edit_profile_alias(message, user_obj){
+    //edit the alias for a user
+    var Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+    const question = new Discord.MessageEmbed()
+        .setTitle('What is your MineCraft username?')
+        .setColor(Member_Data.Team_Objects[parseInt(user_obj.team.slice(1), 10) - 1].color)
+        .setDescription('your MineCraft username is currently set to "' + user_obj.alias + '"');
+    const prompt = await message.channel.send(question);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });//create a message collector to get the reply
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            prompt.delete();
+            return;
+        }
+        var reply = collected.first().toString();
+        if(reply.length > 16){//check to make sure the answer isnt too long
+            message.channel.send('Your username must be less than 17 characters');
+            return;
+        }
+        user_obj.alias = reply;
+        Member_Data.Member_Objects[parseInt(user_obj.id.slice(1), 10) - 1] = user_obj;
+        message.channel.send('Your MineCraft username has been set to `' + reply + '`');
+        fs.writeFileSync('./Member_Data_Main.json', JSON.stringify(Member_Data, null, 4), 'utf8');
+    })
+}
+
+async function Edit_profile_pronouns(message, user_obj){
+    //edit the pronouns for a user
+    var Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+    const question = new Discord.MessageEmbed()
+        .setTitle('What are your pronouns?')
+        .setColor(Member_Data.Team_Objects[parseInt(user_obj.team.slice(1), 10) - 1].color)
+        .setDescription('reply with one of the following\nhe/him - m\nshe/her - f\nthey/them - n');
+    const prompt = await message.channel.send(question);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });//create a message collector to get the reply
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            prompt.delete();
+            return;
+        }
+        var reply = collected.first().toString().toLowerCase();
+        if(reply == 'm'){
+            user_obj.pronouns = 'm'
+        }else if(reply == 'f'){
+            user_obj.pronouns = 'f'
+        }else if(reply == 'n'){
+            user_obj.pronouns = 'n'
+        }else{
+            message.channel.send('Unable to determine the input `' + reply + '`');
+            return;
+        }
+        Member_Data.Member_Objects[parseInt(user_obj.id.slice(1), 10) - 1] = user_obj;
+        message.channel.send('Your MineCraft username has been set to `' + reply + '`');
+        fs.writeFileSync('./Member_Data_Main.json', JSON.stringify(Member_Data, null, 4), 'utf8');
+    })
+}
+
+async function Edit_profile_faction(message, user_obj){
+    //edit the faction for a user
+    var Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+    const question = new Discord.MessageEmbed()
+        .setTitle('Loading...');
+    const prompt = await message.channel.send(question);
+    const emojis = ['1⃣', '2⃣', '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '🔟'];
+    var loop = 0;
+    while(loop < 10 && loop < Member_Data.Team_Objects.length){
+        await prompt.react(emojis[loop]);
+        loop++;
+    }
+    var body = [];
+    loop = 0;
+    while(loop < Member_Data.Team_Objects.length && loop < 10){
+        body[body.length] = emojis[loop] + ' - ' + Member_Data.Team_Objects[loop].name;
+        loop++;
+    }
+    question
+        .setTitle('Chose a team')
+        .setColor(Member_Data.Team_Objects[parseInt(user_obj.team.slice(1), 10) - 1].color)
+        .addField('React with a number...', body.join('\n'));
+    prompt.edit(question)
+    const filter = (reaction, user) => {//set up a filter for valid reactions. Must be one of the following emojis and must be from the user who initiated the search
+        return ['1⃣', '2⃣', '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '🔟'].includes(reaction.emoji.name) && user.id === message.author.id;
+    }
+    const selection = await prompt.awaitReactions(filter, {max: 1, time: 60000})
+        .then(collected => {
+            if(collected.size == 0){
+                message.channel.send('Operation timed out');
+                question.delete();
+                return;
+            }
+            const reaction = collected.first();
+            var team_selected = null;
+            if(reaction.emoji.name === '1⃣' && Member_Data.Team_Objects.length > 0){
+                team_selected = 't001';
+            }else if(reaction.emoji.name === '2⃣' && Member_Data.Team_Objects.length > 1){
+                team_selected = 't002';
+            }else if(reaction.emoji.name === '3⃣' && Member_Data.Team_Objects.length > 2){
+                team_selected = 't003';
+            }else if(reaction.emoji.name === '4⃣' && Member_Data.Team_Objects.length > 3){
+                team_selected = 't004';
+            }else if(reaction.emoji.name === '5⃣' && Member_Data.Team_Objects.length > 4){
+                team_selected = 't005';
+            }else if(reaction.emoji.name === '6⃣' && Member_Data.Team_Objects.length > 5){
+                team_selected = 't006';
+            }else if(reaction.emoji.name === '7⃣' && Member_Data.Team_Objects.length > 6){
+                team_selected = 't007';
+            }else if(reaction.emoji.name === '8⃣' && Member_Data.Team_Objects.length > 7){
+                team_selected = 't008';
+            }else if(reaction.emoji.name === '9⃣' && Member_Data.Team_Objects.length > 8){
+                team_selected = 't009';
+            }else if(reaction.emoji.name === '🔟' && Member_Data.Team_Objects.length > 9){
+                team_selected = 't010';
+            }
+            if(team_selected == null){
+                message.channel.send('Invalid selection.');
+                return;
+            }
+            user_obj.team = team_selected;
+            Member_Data.Member_Objects[parseInt(user_obj.id.slice(1), 10) - 1] = user_obj;
+            message.channel.send('Your team has been set to **' + Member_Data.Team_Objects[parseInt(team_selected.slice(1), 10) - 1].name + '**');
+            fs.writeFileSync('./Member_Data_Main.json', JSON.stringify(Member_Data, null, 4), 'utf8');
+        })
+}
+
+async function Edit_profile_image(message, user_obj){
+    //edit the thumbnail image for a user
+    var Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+    const question = new Discord.MessageEmbed()
+        .setTitle('What do you want your new image to be?')
+        .setColor(Member_Data.Team_Objects[parseInt(user_obj.team.slice(1), 10) - 1].color)
+        .setDescription('reply with a direct link image to a png\n\nIf you need help, try "s!o help edit profile image"');
+    const prompt = await message.channel.send(question);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });//create a message collector to get the reply
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            prompt.delete();
+            return;
+        }
+        var reply = collected.first().toString()
+        if(reply.startsWith('https://') && reply.includes('.png') || reply.startsWith('https://') && reply.includes('.gif')){
+            user_obj.img = reply;
+        }else{
+            message.channel.send('Invalid response. Reply must be a direct link to a .png or a .gif file');
+            return;
+        }
+        Member_Data.Member_Objects[parseInt(user_obj.id.slice(1), 10) - 1] = user_obj;
+        message.channel.send('Your thumbnail  has been set to \n' + reply);
+        fs.writeFileSync('./Member_Data_Main.json', JSON.stringify(Member_Data, null, 4), 'utf8');
+    })
+}
+
+async function Edit_profile_notifs(message, user_obj){
+    //edit the uhc notifications for a user
+    var Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+    const question = new Discord.MessageEmbed()
+        .setTitle('Do you want UHC Notifications?')
+        .setColor(Member_Data.Team_Objects[parseInt(user_obj.team.slice(1), 10) - 1].color)
+        .setDescription('reply with one of the following\nyes - y\nno - n');
+    const prompt = await message.channel.send(question);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });//create a message collector to get the reply
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            prompt.delete();
+            return;
+        }
+        var reply = collected.first().toString().toLowerCase();
+        if(reply == 'y' || reply == 'yes'){
+            user_obj.notif = true
+            message.channel.send('Your UHC notifications have been turned on!');
+        }else if(reply == 'n' || reply == 'no'){
+            user_obj.notif = false
+            message.channel.send('Your UHC notifications have been turned off!');
+        }else{
+            message.channel.send('Unable to determine the input `' + reply + '`');
+            return;
+        }
+        Member_Data.Member_Objects[parseInt(user_obj.id.slice(1), 10) - 1] = user_obj;
+        fs.writeFileSync('./Member_Data_Main.json', JSON.stringify(Member_Data, null, 4), 'utf8');
+    })
+}
+
+async function Edit_profile_timezone(message, user_obj){
+    //edit the timezone for a user
+    var Member_Data = JSON.parse(fs.readFileSync('./Member_Data_Main.json', 'utf8'));
+    const question = new Discord.MessageEmbed()
+        .setTitle('What is your timezone?')
+        .setColor(Member_Data.Team_Objects[parseInt(user_obj.team.slice(1), 10) - 1].color)
+        .setDescription('reply with your timezone as a positive or negative number in how many hours ahead or behind you are from UTC\nExample: -4 (4 hours behind UTC)');
+    const prompt = await message.channel.send(question);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000 });//create a message collector to get the reply
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            prompt.delete();
+            return;
+        }
+        var reply = collected.first().toString().toLowerCase();
+        if(isNaN(reply)){
+            message.channel.send('Reply must be an integer.');
+            return;
+        }
+        reply = parseInt(reply, 10);
+        if(reply < -12 || reply > 12){
+            message.channel.send('Your timezone must be between UTC-12 and UTC+12. Check to see what your timezone is in relation to UTC.');
+            return;
+        }
+        user_obj.timezone = reply;
+        Member_Data.Member_Objects[parseInt(user_obj.id.slice(1), 10) - 1] = user_obj;
+        if(reply > -1){
+            message.channel.send('Your timezone has been set to `UTC+' + reply.toString() + '`');
+        }else{
+            message.channel.send('Your timezone has been set to `UTC' + reply.toString() + '`');
+        }
+        
+        fs.writeFileSync('./Member_Data_Main.json', JSON.stringify(Member_Data, null, 4), 'utf8');
+    })
+}
+
+async function Edit_game_data(message){
+    const in_str = message.content.toString().toLowerCase().split(' ')
+    if(in_str.length != 4){
+        message.channel.send('Improper command format. Try `s!o help edit game`');
+        return;
+    }
+    let g_ID_in = message.content.toString().split(' ')[3].toLowerCase();
+    const Game_Data = JSON.parse(fs.readFileSync('./Game_Data_Main.json', 'utf8'));
+    var game_number = null;
+    console.log('Game ID input: ' + g_ID_in);
+    if(isNaN(g_ID_in) == false){
+        game_number = parseInt(g_ID_in, 10);
+    }else{
+        game_number = parseInt(g_ID_in.slice(1), 10);
+    }
+    if(isNaN(game_number)){
+        message.channel.send('Invalid game ID `' + game_number + '`');
+        return;
+    }
+    var gID = null;
+    if(game_number < 10){
+        gID = 'g00' + game_number.toString();
+    }else if(game_number < 100){
+        gID = 'g0'+ game_number.toString();
+    }else{
+        gID = 'g' + game_number.toString();
+    }
+    if(game_number > Game_Data.Total_Games){
+        message.channel.send('The game ID `' + gID + '` is not found in the archive. Try `s!o history`');
+        return;
+    }
+    //game ID has been obtained and is a valid game ID
+    var game_obj = Game_Data.Game_History[game_number - 1];
+    console.log(game_obj);
+    const menu_embed = new Discord.MessageEmbed()
+        .setTitle('Loading...');
+    const menu_msg = await message.channel.send(menu_embed);
+    const emoji = ['1⃣', '2⃣', '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '🔟'];
+    //option 1 - title
+    //option 2 - videolink
+    var loop = 0;
+    while(loop < 2){
+        await menu_msg.react(emoji[loop]);
+        loop++;
+    }
+    menu_embed
+        .setTitle('Game ' + gID + ' Data')
+        .setDescription('Chose one of the following with a reaction...\n1⃣ - Game Title\n2⃣ - Videolink');
+    menu_msg.edit(menu_embed);
+    const filter = (reaction, user) => {
+        return['1⃣', '2⃣', '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '9⃣', '🔟'].includes(reaction.emoji.name) && user.id === message.author.id;
+    }//set up a reaction collector to get the users answer to the menu
+    const selection = await menu_msg.awaitReactions(filter, {max: 1, time: 60000})
+        .then(collected => {
+            if(collected.size == 0){
+                message.channel.send('Operation timed out.');
+                menu_msg.delete();
+                return;
+            }
+            const reaction = collected.first();//take the returned message and pass forward to the appropriate function to continue the process
+            if(reaction.emoji.name === '1⃣'){
+                Edit_game_title(message, game_obj);
+                menu_msg.delete();
+            }else if(reaction.emoji.name === '2⃣'){
+                Edit_game_video(message, game_obj);
+                menu_msg.delete();
+            }else{
+                message.channel.send('Invalid input "' + reaction + '"');
+                return;
+            }
+        })
+}
+
+async function Edit_game_title(message, game_obj){
+    //edit the game title
+    var Game_File = JSON.parse(fs.readFileSync('./Game_Data/' + game_obj.id + '.json', 'utf8'));
+    var Game_Data = JSON.parse(fs.readFileSync('./Game_Data_Main.json', 'utf8'));
+    const question = new Discord.MessageEmbed()
+        .setTitle('What should be the new title for ' + game_obj.id)
+        .setDescription('The title is currently "' + game_obj.title + '"');
+    const prompt = await message.channel.send(question);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000});
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            prompt.delete();
+            return;
+        }
+        var reply = collected.first().toString();
+        if(reply.length > 200){
+            message.channel.send('The new title must be less than 200 characters.');
+            return;
+        }
+        game_obj.title = reply;
+        Game_File.title = reply;
+        Game_Data.Game_History[parseInt(game_obj.id.slice(1), 10) - 1] = game_obj;
+        fs.writeFileSync('./Game_Data_Main.json', JSON.stringify(Game_Data, null, 4), 'utf8');
+        fs.writeFileSync('./Game_Data/' + game_obj.id + '.json', JSON.stringify(Game_File, null, 4), 'utf8');
+        message.channel.send('Game title updated');
+        Print_Game_Card(message, game_obj.id);
+    })
+}
+
+async function Edit_game_video(message, game_obj){
+    //edit the game videolink
+    var Game_Data = JSON.parse(fs.readFileSync('./Game_Data_Main.json', 'utf8'));
+    var Game_File = JSON.parse(fs.readFileSync('./Game_Data/' + game_obj.id + '.json', 'utf8'));
+    const question = new Discord.MessageEmbed()
+        .setTitle('What should be the new video for ' + game_obj.id)
+        .setDescription('Respond with a youtube link. Make sure it is a youtu.be link, Get it from the share button, not copy pasting from the search bar.');
+    const prompt = await message.channel.send(question);
+    const filter = m => message.content.author == message.channel.author;
+    const collector = message.channel.createMessageCollector(filter, {max: 1, time: 60000});
+    collector.on('end', collected => {
+        if(collected.size == 0){
+            message.channel.send('Operation timed out.');
+            prompt.delete();
+            return;
+        }
+        var reply = collected.first().toString();
+        if(reply.includes('youtu.be') == false){
+            message.channel.send('Not a valid link. Must be a youtu.be link');
+            return;
+        }
+        //-----------experimental code
+        var video_id = null;
+        video_id = reply.split('/')[reply.split('/').length - 1];
+        
+        //-----end experimental code
+        Game_File.videolink = reply;
+        Game_Data.Game_History[parseInt(game_obj.id.slice(1), 10) - 1] = game_obj;
+
+        fs.writeFileSync('./Game_Data/' + game_obj.id + '.json', JSON.stringify(Game_File, null, 4), 'utf8');
+        message.channel.send('Game videolink updated');
+        Print_Game_Card(message, game_obj.id);
+    })
+}
+
 function Help(message){//the help function. For when you just don't know what the fuck to do
     const cmd_Arr = message.content.toString().toLowerCase().split(' ').slice(2);
     const Help_Embed = new Discord.MessageEmbed();
     if(cmd_Arr.length == 0){
         Help_Embed
             .setTitle('Help Menu')
-            .addField('Functions', 's!o uhc [name] - player stats\ns!o solo [name] - solo player stats\ns!o team [name] - team player stats\ns!o leaderboard - uhc leaderboards\ns!o history - search for an archived game\ns!o spreadsheet - link to google excel archive\ns!o help names - bring up a list of all recognized user inputs')
+            .addField('Functions', 's!o uhc [name] - player stats\ns!o solo [name] - solo player stats\ns!o team [name] - team player stats\ns!o leaderboard - uhc leaderboards\ns!o history - search for an archived game\ns!o spreadsheet - link to google excel archive\ns!o help notifs - turn on/off notifications for UHC\ns!o help notify - set up a UHC (restricted command)\ns!o join - sign up to be a member of Stale Oreos\ns!o help names - bring up a list of all recognized user inputs')
             .setFooter('For more information on these commands do `s!o help [command]`');
         message.channel.send(Help_Embed);
         return;
@@ -1707,11 +3999,44 @@ function Help(message){//the help function. For when you just don't know what th
             .addField('Participants', 'Search for games that had certain players\ns!o history ben drew - s!o history mel - s!o history u010 u018')
             .addField('Game ID', 'If you know the ID of the game you want\ns!o history gID\nexample: s!o history g005')
             .addField('Game Type', 'Search for games that were either solo or team\ns!o history solo\ns!o history team')
-    }else{
+    }else if(cmd_Arr[0] == 'notify'){
+        Help_Embed
+            .setTitle('Set up a UHC')
+            .addField('**Command Format**', 's!o notify [hour:minute] [comments/additional info]\n\n**Important**\nAlways enter the planned start time in UTC!\nAnything else after the time in the command will be included in the invitations as a message.')
+            .addField('**What this command does**', 's!o notify will preform several tasks.\n- Invitation cards will be DMd to every member signed up for notifications.\n- An embed will be created displaying the current list of people Coming/Not Coming and Maybe Coming\n- At 30 minutes before UHC, reminders will be sent out\n- At the planned start time, reminders will be sent out.')
+            .setFooter('This command is restricted to server admins');
+    }else if(cmd_Arr[0] == 'notifs'){
+        Help_Embed
+            .setTitle('UHC Notifications')
+            .addField('Command Format', 's!o notifs on\ns!o notifs off')
+            .addField('What this command does', 'UHC Notifications are sent out when a UHC is being set up.\nTo be included in the mailing list you must use the command to turn your notification setting on.\nYou can turn off notifications at any time')
+    }else if(cmd_Arr[0] == 'join'){
+        Help_Embed
+            .setTitle('Join Stale Oreos')
+            .setDescription('Activate this function with s!o join\nFollow the prompts to fill out your profile data');
+    }else if(cmd_Arr[0] == 'edit'){
+        if(cmd_Arr.length == 1){
+            Help_Embed
+                .setTitle('Edit Data Function')
+                .setDescription('Edit profile and game data with s!o edit')
+                .addField('s!o edit profile', 'Edit your profile data, Follow menu prompts to make changes to your profile\nChange your name\nChange your MC username\nChange your pronouns\nChange your faction\nChange your thumbnail image\nChange your UHC Notifications\nChange your timezone')
+                .addField('s!o edit game [gID]', 'Edit a game title and video link');
+        }else if(cmd_Arr[1] == 'profile'){
+            Help_Embed
+                .setTitle('Edit Profile Settings')
+                .addField('s!o edit profile', 'Edit your profile data, Follow menu prompts to make changes to your profile\nChange your name\nChange your MC username\nChange your pronouns\nChange your faction\nChange your thumbnail image\nChange your UHC Notifications\nChange your timezone');
+        }else if(cmd_Arr[1] == 'game'){
+            Help_Embed
+                .setTitle('Edit Game Data')
+                .addField('s!o edit game (game id)', 'To get the game ID, use s!o history and find the game. The footer of the game card will provide the game ID\nEdit Title - change the title of the game\nEdit Video - change the video link for the game\nNOTE - must be a youtu.be link, not a youtube.com link. Get it from the share option below the video.')
+        }
+    }
+    
+    else{
         Help_Embed
             .addField('No function found', 'unable to determine input ' + "'" + cmd_Arr[0] + "'" + '\nTry s!o help');
     }
     message.channel.send(Help_Embed);
 }
 
-client.login("ODI2NjEyOTc0ODE3OTAyNTky.YGPBUg.d8tLLguuBZ80cHMZJdjvbau1E7Q")
+client.login(" ")
